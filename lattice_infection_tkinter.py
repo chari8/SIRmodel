@@ -6,11 +6,11 @@
 from tkinter import *
 import numpy as np
 import sys
-import enum
+from enum import Enum
 # import time
 
-# Enum people
-class State(enum.Enum):
+#Enum
+class State(Enum):
     suspect = 0
     infect = 1
     recover = 2
@@ -20,36 +20,38 @@ susCol = "white"
 infCol = "red"
 recCol = "blue"
 
+# Params
 # Probability Setting
-beta = 0.3
+beta = 0.1
+
+#Time
+Tmax = 2000
+RecTime = 10
 
 class SIRmodel:
 
     def __init__(self, L=30, rule="2 3/3", p=None, pattern=None):
         self.L = L  # lattice size
-        self.survive = [int(i) for i in rule.split("/")[0].split()]
-        self.birth = [int(i) for i in rule.split("/")[1].split()]
-
+        # self.survive = [int(i) for i in rule.split("/")[0].split()]
+        # self.birth = [int(i) for i in rule.split("/")[1].split()]
+        self.illTime = np.zeros([self.L + 2, self.L + 2])
         if p:
             lattice = np.random.random([self.L + 2, self.L + 2])
             self.lattice = lattice < p
-            self.lattice[0, :] = self.lattice[self.L+1, :] = False#suspect
-            self.lattice[:, 0] = self.lattice[:, self.L + 1] = False#suspect
+            self.lattice[0, :] = self.lattice[self.L+1, :] = State.suspect.value
+            self.lattice[:, 0] = self.lattice[:, self.L + 1] = State.suspect.value
         else:
             self.lattice = np.zeros([self.L + 2, self.L + 2], dtype=int)
             if pattern:
                 for x, y in pattern:
-                    self.lattice[x, y] = True#infect
+                    self.lattice[x, y] = State.infect.value
 
     def progress(self, canvas_update, update):
-        Tmax = 2000
         t = 0
         self.loop = True
         while self.loop:
             try:
                 past_lattice = self.lattice.copy()
-
-                nextsites = []
 
                 # # 周期境界条件
                 # self.lattice[0, 0] = self.lattice[self.L, self.L]
@@ -64,14 +66,39 @@ class SIRmodel:
 
                 # 隣接格子点の判定
                 for m in range(1, self.L + 1):
-                    for n in range(1, self.L + 1):
+                    for n in range(1, self.L + 1):                        
 
-                        # 変更点
-                        neighber = np.sum(self.lattice[m-1:m+2,n] + self.lattice[m,n-1:n+2])
-                        for i in range(neighber):
-                            if np.random.random() < beta:
-                                nextsites.append((m,n))                          
+                        if self.lattice[m,n] == State.suspect.value:
+                            ## 感染判定
+                            
+                            # 周囲のinfect数を調べる
+                            neighber = 0
+                            if self.lattice[m-1,n] == State.infect.value:
+                                neighber += 1
+                            if self.lattice[m,n-1] == State.infect.value:
+                                neighber += 1
+                            if self.lattice[m+1,n] == State.infect.value:
+                                neighber += 1
+                            if self.lattice[m,n+1] == State.infect.value:
+                                neighber += 1
 
+                            # 各感染者から感染するか計算    
+                            for i in range(neighber):
+                                if np.random.random() < beta:
+                                    self.lattice[m,n] = State.infect.value
+
+                        elif self.lattice[m,n] == State.infect.value:
+                            # State = InfectedならばillTimeをインクリメント
+                            # 一定時間でInfectからRecoverへ
+                            if self.illTime[m,n] > RecTime:
+                                self.lattice[m,n] = State.recover.value
+                            else:
+                                self.illTime[m,n] += 1
+
+                        else:                        
+                            # State = Recoverdならばスルー
+                            continue
+                        
                         # if self.lattice[m, n]:
                         #     neighber = np.sum(self.lattice[m-1:m+2, n-1:n+2])-1
                         #     if neighber in self.survive:
@@ -82,17 +109,19 @@ class SIRmodel:
                         #         nextsites.append((m, n))
 
                 # latticeの更新
-                self.lattice[:] = False
-                for nextsite in nextsites:
-                    self.lattice[nextsite] = True
+                # self.lattice[:] = State.suspect.value
+                # for nextsite in nextsites:
+                #     self.lattice[nextsite] = State.infect.value
 
                 # 描画の更新
                 changed_rect = np.where(self.lattice != past_lattice)
                 for x, y in zip(changed_rect[0], changed_rect[1]):
-                    if self.lattice[x, y]:
+                    if self.lattice[x, y] == State.suspect.value:
+                        color = susCol
+                    elif self.lattice[x, y] == State.infect.value:
                         color = infCol
                     else:
-                        color = susCol
+                        color = recCol
                     canvas_update(x, y, color)
                 update()
                # time.sleep(0.1)
@@ -106,7 +135,7 @@ class SIRmodel:
                 break
 
 
-# DrowwingSystem (Do not have to touch)
+# DrowwingSystem (Do not have to change)
 class Draw_canvas:
 
     def __init__(self, lg, L):
@@ -124,12 +153,14 @@ class Draw_canvas:
         self.c = self.canvas.create_rectangle
         self.update = self.canvas.update
         self.rects = dict()
+        self.lg.lattice[:] = State.suspect.value
+        
         for y in range(1, self.L + 1):
             for x in range(1, self.L + 1):
-                if self.lg.lattice[x, y]:
-                    live = True
+                if self.lg.lattice[x, y] == State.infect.value:
+                    live = State.infect.value
                 else:
-                    live = False
+                    live = State.suspect.value
                 tag = "%d %d" % (x, y)
                 self.rects[tag] = Rect(x, y, live, tag, self)
         self.canvas.pack()
@@ -145,11 +176,13 @@ class Rect:
         self.root = root
         self.x = x
         self.y = y
-        self.live = bool(live)
-        if live:
+        self.live = live
+        if live == State.suspect.value:
+            color = susCol
+        elif live == State.infect.value:
             color = infCol
         else:
-            color = susCol
+            color = recCol
         self.ID = self.root.c(2*(x-1)*self.root.r + self.root.margin,
                               2*(y-1)*self.root.r + self.root.margin,
                               2*x*self.root.r + self.root.margin,
@@ -158,15 +191,14 @@ class Rect:
         self.root.canvas.tag_bind(self.ID, '<Button-1>', self.pressed)
 
     def pressed(self, event):
-        if self.live:
-            self.live = False
+
+        # toggle
+        if self.live == State.suspect.value:
             color = infCol
         else:
-            self.live = True
             color = susCol
-        self.root.lg.lattice[self.x, self.y] = self.live
+        self.root.lg.lattice[self.x, self.y] = State.infect.value
         self.root.canvas.itemconfig(self.ID, fill=color)
-
 
 class TopWindow:
 
@@ -181,7 +213,6 @@ class TopWindow:
             frames[i].pack(fill='x')
         self.root.mainloop()
 
-
 class Main:
 
     def __init__(self):
@@ -189,14 +220,14 @@ class Main:
         rule = "2 3/3"
         self.top = TopWindow()
         c = L / 2
-        # ダイハード
         pattern = [(c,c)]
                    
-
         self.lg = SIRmodel(L, rule, p=None, pattern=pattern)
         self.top.show_window("SIR Model", (('set', self.init),),
                              (('start', self.start),
-                              ('pause', self.pause)),
+                              ('pause', self.pause),
+                              ('clear', self.clear),
+                             ),
                              (('save', self.pr),),
                              (('quit', self.quit),))
 
@@ -208,7 +239,10 @@ class Main:
 
     def pause(self):
         self.lg.loop = False
-
+        
+    def clear(self):
+        self.lg.lattice[:] = State.suspect.value
+        self.
     def pr(self):
         import tkinter.filedialog
         import os
