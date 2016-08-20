@@ -226,7 +226,7 @@ class Main:
         self.top.show_window("SIR Model", (('set', self.init),),
                              (('start', self.start),
                               ('pause', self.pause),
-                              ('clear', self.clear),
+                              # ('clear', self.clear), 
                              ),
                              (('save', self.pr),),
                              (('quit', self.quit),))
@@ -240,9 +240,9 @@ class Main:
     def pause(self):
         self.lg.loop = False
         
-    def clear(self):
-        self.lg.lattice[:] = State.suspect.value
-        self.
+     # def clear(self):
+     #    self.lg.lattice[:] = State.suspect.value
+
     def pr(self):
         import tkinter.filedialog
         import os
