@@ -23,10 +23,15 @@ recCol = "blue"
 # Params
 # Probability Setting
 beta = 0.1
+prob = 0.01 #First infected probability
 
-#Time
+# Time
 Tmax = 2000
 RecTime = 5
+
+# Size
+L = 150
+default_size = 640  # default size of canvas
 
 class SIRmodel:
 
@@ -92,9 +97,7 @@ class SIRmodel:
                         else:                        
                             # State = Recoverdならばスルー
                             continue
-
                 
-                print(self.lattice[75,75])
                 # 描画の更新
                 changed_rect = np.where(self.lattice != past_lattice)
                 for x, y in zip(changed_rect[0], changed_rect[1]):
@@ -117,15 +120,12 @@ class SIRmodel:
                 print("stopped.")
                 break
 
-
-# DrowwingSystem (Do not have to change)
 class Draw_canvas:
 
     def __init__(self, lg, L):
 
         self.lg = lg
         self.L = L
-        default_size = 640  # default size of canvas
         self.r = int(default_size / (2 * self.L))
         self.fig_size = 2 * self.r * self.L
         self.margin = 10
@@ -135,7 +135,7 @@ class Draw_canvas:
                              height=self.fig_size + 2 * self.margin)
         self.c = self.canvas.create_rectangle
         self.update = self.canvas.update
-        self.rects = dict()
+        self.rects = dict()        
         
         for y in range(1, self.L + 1):
             for x in range(1, self.L + 1):
@@ -196,23 +196,24 @@ class TopWindow:
         self.root.mainloop()
 
 class Main:
-
     def __init__(self):
-        L = 150
-        self.top = TopWindow()
-        c = L / 2
-        pattern = [(c,c)]
-        p = 0.01
-                          
-        self.lg = SIRmodel(L, p, pattern=pattern)
-        self.top.show_window("SIR Model", (('set', self.init),),
+        self.top = TopWindow()                          
+        self.top.show_window("SIR Model",
+                             (('clear set', self.clearSet),
+                             ('rand set', self.randSet),
+                             ),                             
                              (('start', self.start),
                               ('pause', self.pause),
                              ),
                              (('save', self.pr),),
                              (('quit', self.quit),))
 
-    def init(self):
+    def clearSet(self):
+        self.lg = SIRmodel(L, p=0, pattern=None)
+        self.DrawCanvas = Draw_canvas(self.lg, self.lg.L)
+
+    def randSet(self):
+        self.lg = SIRmodel(L, p=prob, pattern=None)
         self.DrawCanvas = Draw_canvas(self.lg, self.lg.L)
 
     def start(self):
