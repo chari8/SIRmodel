@@ -26,18 +26,22 @@ beta = 0.1
 
 #Time
 Tmax = 2000
-RecTime = 10
+RecTime = 5
 
 class SIRmodel:
 
-    def __init__(self, L=30, rule="2 3/3", p=None, pattern=None):
+    def __init__(self, L=30, p=None, pattern=None):
         self.L = L  # lattice size
-        # self.survive = [int(i) for i in rule.split("/")[0].split()]
-        # self.birth = [int(i) for i in rule.split("/")[1].split()]
         self.illTime = np.zeros([self.L + 2, self.L + 2])
-        if p:
+        if p > 0:
             lattice = np.random.random([self.L + 2, self.L + 2])
-            self.lattice = lattice < p
+            self.lattice = np.zeros([self.L + 2, self.L + 2], dtype=int) 
+            for i in range(L+2):
+                        for j in range(L+2):
+                            if lattice[i,j] < p:
+                                self.lattice[i,j] = State.infect.value
+                            else:
+                                self.lattice[i,j] = State.suspect.value
             self.lattice[0, :] = self.lattice[self.L+1, :] = State.suspect.value
             self.lattice[:, 0] = self.lattice[:, self.L + 1] = State.suspect.value
         else:
@@ -53,17 +57,6 @@ class SIRmodel:
             try:
                 past_lattice = self.lattice.copy()
 
-                # # 周期境界条件
-                # self.lattice[0, 0] = self.lattice[self.L, self.L]
-                # self.lattice[0, self.L + 1] = self.lattice[self.L, 1]
-                # self.lattice[self.L + 1, 0] = self.lattice[1, self.L]
-                # self.lattice[self.L + 1, self.L + 1] = self.lattice[1, 1]
-                # for m in range(1, self.L+1):
-                #     self.lattice[m, self.L+1] = self.lattice[m, 1]
-                #     self.lattice[m, 0] = self.lattice[m, self.L]
-                #     self.lattice[0, m] = self.lattice[self.L, m]
-                #     self.lattice[self.L+1, m] = self.lattice[1, m]
-
                 # 隣接格子点の判定
                 for m in range(1, self.L + 1):
                     for n in range(1, self.L + 1):                        
@@ -71,7 +64,7 @@ class SIRmodel:
                         if self.lattice[m,n] == State.suspect.value:
                             ## 感染判定
                             
-                            # 周囲のinfect数を調べる
+                            # 周囲のinfect.value数を調べる
                             neighber = 0
                             if self.lattice[m-1,n] == State.infect.value:
                                 neighber += 1
@@ -88,7 +81,8 @@ class SIRmodel:
                                     self.lattice[m,n] = State.infect.value
 
                         elif self.lattice[m,n] == State.infect.value:
-                            # State = InfectedならばillTimeをインクリメント
+                            
+                            # State = InfectならばillTimeをインクリメント
                             # 一定時間でInfectからRecoverへ
                             if self.illTime[m,n] > RecTime:
                                 self.lattice[m,n] = State.recover.value
@@ -98,24 +92,13 @@ class SIRmodel:
                         else:                        
                             # State = Recoverdならばスルー
                             continue
-                        
-                        # if self.lattice[m, n]:
-                        #     neighber = np.sum(self.lattice[m-1:m+2, n-1:n+2])-1
-                        #     if neighber in self.survive:
-                        #         nextsites.append((m, n))
-                        # else:
-                        #     neighber = np.sum(self.lattice[m-1:m+2, n-1:n+2])
-                        #     if neighber in self.birth:
-                        #         nextsites.append((m, n))
 
-                # latticeの更新
-                # self.lattice[:] = State.suspect.value
-                # for nextsite in nextsites:
-                #     self.lattice[nextsite] = State.infect.value
-
+                
+                print(self.lattice[75,75])
                 # 描画の更新
                 changed_rect = np.where(self.lattice != past_lattice)
                 for x, y in zip(changed_rect[0], changed_rect[1]):
+                    
                     if self.lattice[x, y] == State.suspect.value:
                         color = susCol
                     elif self.lattice[x, y] == State.infect.value:
@@ -124,8 +107,8 @@ class SIRmodel:
                         color = recCol
                     canvas_update(x, y, color)
                 update()
-               # time.sleep(0.1)
-
+               # time.sleep(0.1)               
+               
                 t += 1
                 if t > Tmax:
                     self.loop = False
@@ -153,14 +136,13 @@ class Draw_canvas:
         self.c = self.canvas.create_rectangle
         self.update = self.canvas.update
         self.rects = dict()
-        self.lg.lattice[:] = State.suspect.value
         
         for y in range(1, self.L + 1):
             for x in range(1, self.L + 1):
                 if self.lg.lattice[x, y] == State.infect.value:
-                    live = State.infect.value
+                    live = State.infect.value                                        
                 else:
-                    live = State.suspect.value
+                    live = State.suspect.value                                     
                 tag = "%d %d" % (x, y)
                 self.rects[tag] = Rect(x, y, live, tag, self)
         self.canvas.pack()
@@ -217,16 +199,15 @@ class Main:
 
     def __init__(self):
         L = 150
-        rule = "2 3/3"
         self.top = TopWindow()
         c = L / 2
         pattern = [(c,c)]
-                   
-        self.lg = SIRmodel(L, rule, p=None, pattern=pattern)
+        p = 0.01
+                          
+        self.lg = SIRmodel(L, p, pattern=pattern)
         self.top.show_window("SIR Model", (('set', self.init),),
                              (('start', self.start),
                               ('pause', self.pause),
-                              # ('clear', self.clear), 
                              ),
                              (('save', self.pr),),
                              (('quit', self.quit),))
@@ -240,9 +221,6 @@ class Main:
     def pause(self):
         self.lg.loop = False
         
-     # def clear(self):
-     #    self.lg.lattice[:] = State.suspect.value
-
     def pr(self):
         import tkinter.filedialog
         import os
