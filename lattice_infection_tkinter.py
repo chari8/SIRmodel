@@ -6,10 +6,12 @@
 from tkinter import *
 import numpy as np
 import sys
+import collections
+import math
 from enum import Enum
 # import time
 
-#Enum
+# Enum
 class State(Enum):
     suspect = 0
     infect = 1
@@ -21,19 +23,27 @@ infCol = "red"
 recCol = "blue"
 
 # Params
+
 # Probability Setting
 beta = 0.1
-prob = 0.01 #First infected probability
+prob = 0.001 #First infected probability
 
 # Time
 Tmax = 2000
 RecTime = 5
 
 # Size
-L = 150
-default_size = 640  # default size of canvas
+L = 200
+default_size = 1080  # default size of canvas
+
+# Effective Area
+center = (100,100)
+radius = 50
 
 class SIRmodel:
+
+    def isRange(self, x, y):
+        return (x - center[0])**2 + (y - center[1])**2 < radius**2
 
     def __init__(self, L=30, p=None, pattern=None):
         self.L = L  # lattice size
@@ -42,11 +52,16 @@ class SIRmodel:
             lattice = np.random.random([self.L + 2, self.L + 2])
             self.lattice = np.zeros([self.L + 2, self.L + 2], dtype=int) 
             for i in range(L+2):
-                        for j in range(L+2):
-                            if lattice[i,j] < p:
-                                self.lattice[i,j] = State.infect.value
-                            else:
-                                self.lattice[i,j] = State.suspect.value
+                for j in range(L+2):
+
+                    # 範囲指定
+                    if not self.isRange(i,j):
+                        continue
+                    
+                    if lattice[i,j] < p:
+                        self.lattice[i,j] = State.infect.value
+                    else:
+                        self.lattice[i,j] = State.suspect.value
             self.lattice[0, :] = self.lattice[self.L+1, :] = State.suspect.value
             self.lattice[:, 0] = self.lattice[:, self.L + 1] = State.suspect.value
         else:
@@ -54,18 +69,24 @@ class SIRmodel:
             if pattern:
                 for x, y in pattern:
                     self.lattice[x, y] = State.infect.value
-
-    def progress(self, canvas_update, update):
+    
+    def progress(self, canvas_update, canvas_dataReload, update):
         t = 0
         self.loop = True
+        past_lattices = []
         while self.loop:
             try:
                 past_lattice = self.lattice.copy()
-
+                past_lattices.append(past_lattice)
+                
                 # 隣接格子点の判定
                 for m in range(1, self.L + 1):
                     for n in range(1, self.L + 1):                        
 
+                        # 範囲指定
+                        if not self.isRange(m,n):
+                            continue
+                        
                         if self.lattice[m,n] == State.suspect.value:
                             ## 感染判定
                             
@@ -107,15 +128,20 @@ class SIRmodel:
                     elif self.lattice[x, y] == State.infect.value:
                         color = infCol
                     else:
-                        color = recCol
+                        color = recCol                        
+                        
                     canvas_update(x, y, color)
                 update()
-               # time.sleep(0.1)               
-               
+                # time.sleep(0.1)          
+
+                # 状態更新
                 t += 1
                 if t > Tmax:
                     self.loop = False
 
+                # 状態表示
+                canvas_dataReload()
+                
             except KeyboardInterrupt:
                 print("stopped.")
                 break
@@ -132,25 +158,38 @@ class Draw_canvas:
         self.sub = Toplevel()
         self.sub.title("SIR Model")
         self.canvas = Canvas(self.sub, width=self.fig_size + 2 * self.margin,
-                             height=self.fig_size + 2 * self.margin)
+                             height=self.fig_size + 10 * self.margin)
         self.c = self.canvas.create_rectangle
         self.update = self.canvas.update
-        self.rects = dict()        
+        self.rects = dict()
         
         for y in range(1, self.L + 1):
             for x in range(1, self.L + 1):
                 if self.lg.lattice[x, y] == State.infect.value:
-                    live = State.infect.value                                        
+                    live = State.infect.value
                 else:
-                    live = State.suspect.value                                     
-                tag = "%d %d" % (x, y)
+                    live = State.suspect.value
+                    tag = "%d %d" % (x, y)
                 self.rects[tag] = Rect(x, y, live, tag, self)
         self.canvas.pack()
-
+        
     def canvas_update(self, x, y, color):
-        v = self.rects["%d %d" % (x, y)]
-        v.root.canvas.itemconfig(v.ID, fill=color)
+        try:
+            v = self.rects["%d %d" % (x, y)]
+            v.root.canvas.itemconfig(v.ID, fill=color)
+        except:
+            hoge = 1
 
+    def canvas_dataReload(self):
+        tmp = []
+        for i in range(self.L):
+            for j in range(self.L):
+                tmp.append(self.lg.lattice[i,j])
+        count_dict = collections.Counter(tmp)
+        for k,v in count_dict.items():
+            print(v, end="\t")
+        print()
+        #     StateShow.pack()
 
 class Rect:
 
@@ -197,10 +236,10 @@ class TopWindow:
 
 class Main:
     def __init__(self):
-        self.top = TopWindow()                          
+        self.top = TopWindow()
         self.top.show_window("SIR Model",
                              (('clear set', self.clearSet),
-                             ('rand set', self.randSet),
+                             ('random set', self.randSet),
                              ),                             
                              (('start', self.start),
                               ('pause', self.pause),
@@ -209,7 +248,7 @@ class Main:
                              (('quit', self.quit),))
 
     def clearSet(self):
-        self.lg = SIRmodel(L, p=0, pattern=None)
+        self.lg = SIRmodel(L, p=0, pattern=None)        
         self.DrawCanvas = Draw_canvas(self.lg, self.lg.L)
 
     def randSet(self):
@@ -217,8 +256,8 @@ class Main:
         self.DrawCanvas = Draw_canvas(self.lg, self.lg.L)
 
     def start(self):
-        self.lg.progress(self.DrawCanvas.canvas_update, self.DrawCanvas.update)
-
+        self.lg.progress(self.DrawCanvas.canvas_update, self.DrawCanvas.canvas_dataReload, self.DrawCanvas.update)
+        
     def pause(self):
         self.lg.loop = False
         
@@ -236,8 +275,11 @@ class Main:
         self.DrawCanvas.canvas.postscript(file=filename)
 
     def quit(self):
-        self.pause()
-        sys.exit()
+        try:
+            self.pause()
+            sys.exit()
+        except:
+            sys.exit()
 
 if __name__ == '__main__':
 
