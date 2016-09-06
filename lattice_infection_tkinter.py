@@ -175,6 +175,7 @@ class Draw_canvas:
         
     def canvas_update(self, x, y, color):
         try:
+            print(self.rects)
             v = self.rects["%d %d" % (x, y)]
             v.root.canvas.itemconfig(v.ID, fill=color)
         except:
