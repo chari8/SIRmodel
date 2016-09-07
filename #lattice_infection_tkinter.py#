@@ -27,8 +27,8 @@ recCol = "blue"
 TriMode = False
 
 # Probability Setting
-beta = 0.1
-prob = 0.001 #First infected probability
+beta = 0.1 # Infe
+prob = 0.001 # First infected probability
 
 # Time
 Tmax = 2000
