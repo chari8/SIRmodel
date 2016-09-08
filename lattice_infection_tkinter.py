@@ -22,13 +22,13 @@ susCol = "white"
 infCol = "red"
 recCol = "blue"
 
-## ---------- Params ---------------
+## ---------- Parameters ---------------
 # Rec or Tri Mode
-TriMode = False
+TriMode = True
 
 # Probability Setting
-beta = 0.1
-prob = 0.001 #First infected probability
+beta = 0.1 # Rate of Infection
+prob = 0.001 # Primitive infection probability
 
 # Time
 Tmax = 2000
@@ -39,6 +39,7 @@ L = 100
 default_size = 700  # default size of canvas
 
 # Effective Area
+# Round
 center = (100,100)
 radius = 50
 
@@ -350,11 +351,8 @@ class Main:
         self.DrawCanvas.canvas.postscript(file=filename)
 
     def quit(self):
-        try:
-            self.pause()
-            sys.exit()
-        except:
-            sys.exit()
+        self.pause()
+        sys.exit()
 
 if __name__ == '__main__':
 
