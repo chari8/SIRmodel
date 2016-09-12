@@ -24,7 +24,7 @@ susCol = "white"
 infCol = "red"
 recCol = "blue"
 
->>>>>>> another
+>>>>>>> 01bfd01433abcb237c23c79309add6478c6f1d2a
 ## ---------- Parameters ---------------
 # Rec or Tri Mode
 TriMode = True
@@ -373,7 +373,7 @@ class Main:
 <<<<<<< HEAD
 =======
         self.pause()
->>>>>>> another
+>>>>>>> 01bfd01433abcb237c23c79309add6478c6f1d2a
         sys.exit()
 
 if __name__ == '__main__':
