@@ -11,17 +11,6 @@ import math
 from enum import Enum
 # import time
 
-# Enum
-class State(Enum):
-    suspect = 0
-    infect = 1
-    recover = 2
-
-# Color Setting
-susCol = "white"
-infCol = "red"
-recCol = "blue"
-
 ## ---------- Parameters ---------------
 # Rec or Tri Mode
 TriMode = True
@@ -36,7 +25,7 @@ RecTime = 5
 
 # Size
 L = 100
-default_size = 700  # default size of canvas
+default_size = 1080  # default size of canvas
 
 # Effective Area
 # Round
@@ -44,6 +33,20 @@ center = (100,100)
 radius = 50
 
 ## ---------- End ---------------
+
+# State Setting
+class State(Enum):
+    suspect = 0
+    infect = 1
+    recover = 2
+
+# Color Setting
+susCol = "white"
+infCol = "red"
+recCol = "blue"
+
+# Enum2Color
+enum2color = [susCol, infCol, recCol]
 
 # Useful functions
 def isEven(x):
@@ -88,15 +91,16 @@ class SIRmodel:
             if pattern:
                 for x, y in pattern:
                     self.lattice[x, y] = State.infect.value
+        self.past_lattices = []
+        self.t = 0
     
-    def progress(self, canvas_update, canvas_dataReload, update):
-        t = 0
+    def progress(self, canvas_update, canvas_displayStatus, update):
         self.loop = True
-        past_lattices = []
+        self.illTime[:, :] = 0
         while self.loop:
             try:
                 past_lattice = self.lattice.copy()
-                past_lattices.append(past_lattice)
+                self.past_lattices.append(past_lattice)
                 
                 # 隣接格子点の判定
                 for m in range(1, self.L + 1):
@@ -136,37 +140,47 @@ class SIRmodel:
                             else:
                                 self.illTime[m,n] += 1
 
-                        else:                        
+                        else:
                             # State = Recoverdならばスルー
                             continue
                 
                 # 描画の更新
                 changed_rect = np.where(self.lattice != past_lattice)
                 for x, y in zip(changed_rect[0], changed_rect[1]):
-                    
-                    if self.lattice[x, y] == State.suspect.value:
-                        color = susCol
-                    elif self.lattice[x, y] == State.infect.value:
-                        color = infCol
-                    else:
-                        color = recCol                        
-                        
+                    color = enum2color[self.lattice[x,y]]                        
                     canvas_update(x, y, color)
                 update()
-                # time.sleep(0.1)          
+                # time.sleep(0.1)
 
                 # 状態更新
-                t += 1
-                if t > Tmax:
+                self.t += 1
+                if self.t > Tmax:
                     self.loop = False
 
                 # 状態表示
-                canvas_dataReload()
+                canvas_displayStatus(self.lattice)
                 
             except KeyboardInterrupt:
                 print("stopped.")
                 break
+            
+    def rewind(self, canvas_update, canvas_displayStatus, update):
+        self.loop = True
+        future_lattice = self.lattice
+        while self.loop:
+                tmp_lattice = self.past_lattices.pop()
+                changed_rect = np.where(tmp_lattice != future_lattice)
+                for x, y in zip(changed_rect[0], changed_rect[1]):
+                    color = enum2color[tmp_lattice[x, y]]
+                    canvas_update(x, y, color)
+                    self.lattice = tmp_lattice
+                update()
 
+                self.t -= 1
+                if len(self.past_lattices) == 0:
+                    self.loop = False
+                canvas_displayStatus(tmp_lattice)
+                           
 class Draw_canvas:
 
     def __init__(self, lg, L):
@@ -188,11 +202,8 @@ class Draw_canvas:
         
         for y in range(1, self.L + 1):
             for x in range(1, self.L + 1):
-                if self.lg.lattice[x, y] == State.infect.value:
-                    live = State.infect.value
-                else:
-                    live = State.suspect.value
-                    tag = "%d %d" % (x, y)
+                live = self.lg.lattice[x,y]
+                tag = "%d %d" % (x, y)
                 if TriMode:
                     self.rects[tag] = Tri(x, y, live, tag, self)
                 else:
@@ -204,13 +215,13 @@ class Draw_canvas:
             v = self.rects["%d %d" % (x, y)]
             v.root.canvas.itemconfig(v.ID, fill=color)
         except:
-          pass
+            pass
         
-    def canvas_dataReload(self):
+    def canvas_displayStatus(self, lat):
         tmp = []
-        for i in range(self.L):
-            for j in range(self.L):
-                tmp.append(self.lg.lattice[i,j])
+        for i in range(1, self.L+1):
+            for j in range(1,self.L+1):
+                tmp.append(lat[i,j])
         count_dict = collections.Counter(tmp)
         if count_dict != self.past:
             for k,v in count_dict.items():
@@ -225,12 +236,7 @@ class Rect:
         self.x = x
         self.y = y
         self.live = live
-        if live == State.suspect.value:
-            color = susCol
-        elif live == State.infect.value:
-            color = infCol
-        else:
-            color = recCol
+        color = enum2color[live]
         self.ID = self.root.cr(2*(x-1)*self.root.r + self.root.margin,
                               2*(y-1)*self.root.r + self.root.margin,
                               2*x*self.root.r + self.root.margin,
@@ -255,13 +261,8 @@ class Tri:
         self.x = x
         self.y = y
         self.live = live
-        if live == State.suspect.value:
-            color = susCol
-        elif live == State.infect.value:
-            color = infCol
-        else:
-            color = recCol
-        size = 3
+        color = enum2color[live]
+        size = 2
 
         ## Divide M line or W line
             
@@ -317,8 +318,9 @@ class Main:
                              (('clear set', self.clearSet),
                              ('random set', self.randSet),
                              ),                             
-                             (('start', self.start),
-                              ('pause', self.pause),
+                             (('▶', self.start),
+                              ('□', self.pause),
+                              ('◁◁', self.rewind),
                              ),
                              (('save', self.pr),),
                              (('quit', self.quit),))
@@ -332,8 +334,11 @@ class Main:
         self.DrawCanvas = Draw_canvas(self.lg, self.lg.L)
 
     def start(self):
-        self.lg.progress(self.DrawCanvas.canvas_update, self.DrawCanvas.canvas_dataReload, self.DrawCanvas.update)
-        
+        self.lg.progress(self.DrawCanvas.canvas_update, self.DrawCanvas.canvas_displayStatus, self.DrawCanvas.update)
+
+    def rewind(self):
+        self.lg.rewind(self.DrawCanvas.canvas_update, self.DrawCanvas.canvas_displayStatus, self.DrawCanvas.update)
+
     def pause(self):
         self.lg.loop = False
         
@@ -351,7 +356,6 @@ class Main:
         self.DrawCanvas.canvas.postscript(file=filename)
 
     def quit(self):
-        self.pause()
         sys.exit()
 
 if __name__ == '__main__':
