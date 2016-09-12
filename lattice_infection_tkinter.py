@@ -11,20 +11,6 @@ import math
 from enum import Enum
 # import time
 
-<<<<<<< HEAD
-=======
-# Enum
-class State(Enum):
-    suspect = 0
-    infect = 1
-    recover = 2
-
-# Color Setting
-susCol = "white"
-infCol = "red"
-recCol = "blue"
-
->>>>>>> another
 ## ---------- Parameters ---------------
 # Rec or Tri Mode
 TriMode = True
@@ -370,10 +356,6 @@ class Main:
         self.DrawCanvas.canvas.postscript(file=filename)
 
     def quit(self):
-<<<<<<< HEAD
-=======
-        self.pause()
->>>>>>> another
         sys.exit()
 
 if __name__ == '__main__':
