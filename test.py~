@@ -1,0 +1,15 @@
+
+def isArea(lst, head, x, y):
+    yd = y - head
+    if (yd < 0) or (yd > len(lst)):
+        return False
+    minX, maxX = lst[yd]
+    if x > minX and x < maxX:
+        return True
+    else:
+        return False
+
+if __name__ == '__main__':
+    list = [[1,10], [2,11], [3, 12], [4, 11], [3, 10]]
+    print(isArea(list, 0, 5, 3))
+    print(isArea(list, 0, 12, 4))

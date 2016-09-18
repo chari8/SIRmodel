@@ -13,10 +13,11 @@ from enum import Enum
 
 ## ---------- Parameters ---------------
 # Rec or Tri Mode
-TriMode = True
+TriMode = 1
+SettingArea = 1
 
 # Probability Setting
-beta = 0.1 # Rate of Infection
+beta = 0.3 # Rate of Infection
 prob = 0.001 # Primitive infection probability
 
 # Time
@@ -61,11 +62,20 @@ def isDelta(x,y):
 def isNabla(x,y):
     return not isDelta(x,y)
 
-class SIRmodel:
-
-    def isRange(self, x, y):
-        # return (x - center[0])**2 + (y - center[1])**2 < radius**2
+def isRange(x, y, head=20):
+    lst = [[20,80],[20,80],[20,80],[20,80],[20,80],[20,80],[20,80],[20,80],[20,80],[20,80],[20,80],[20,80],[20,80],[20,80],[20,80],[50,80],[50,80],[50,80],[50,80],[50,80],[50,80],[50,80],[50,80],[50,80],[50,80],[20,80],[20,80],[20,80],[20,80],[20,80],[20,80],[20,80],[20,80],[20,80],[20,80]]
+    if not SettingArea:
         return True
+    yd = y - head
+    if yd < 0 or yd > len(lst)-1:
+        return False
+    minX, maxX = lst[yd]
+    if x > minX and x < maxX:
+        return True
+    else:
+        return False
+
+class SIRmodel:
 
     def __init__(self, L=30, p=None, pattern=None):
         self.L = L  # lattice size
@@ -77,7 +87,7 @@ class SIRmodel:
                 for j in range(L+2):
 
                     # 範囲指定
-                    if not self.isRange(i,j):
+                    if not isRange(i,j):
                         continue
                     
                     if lattice[i,j] < p:
@@ -107,7 +117,7 @@ class SIRmodel:
                     for n in range(1, self.L + 1):
 
                         # 範囲指定
-                        if not self.isRange(m,n):
+                        if not isRange(m,n):
                             continue
                         
                         if self.lattice[m,n] == State.suspect.value:
