@@ -13,11 +13,11 @@ from enum import Enum
 
 ## ---------- Parameters ---------------
 # Rec or Tri Mode
-TriMode = 1
-SettingArea = 1
+TriFlg = True
+SettingArea = True
 
 # Probability Setting
-beta = 0.3 # Rate of Infection
+beta = 0.1 # Rate of Infection
 prob = 0.001 # Primitive infection probability
 
 # Time
@@ -29,9 +29,6 @@ L = 100
 default_size = 1080  # default size of canvas
 
 # Effective Area
-# Round
-center = (100,100)
-radius = 50
 
 ## ---------- End ---------------
 
@@ -62,24 +59,18 @@ def isDelta(x,y):
 def isNabla(x,y):
     return not isDelta(x,y)
 
-def isRange(x, y, head=20):
-    lst = [[20,80],[20,80],[20,80],[20,80],[20,80],[20,80],[20,80],[20,80],[20,80],[20,80],[20,80],[20,80],[20,80],[20,80],[20,80],[50,80],[50,80],[50,80],[50,80],[50,80],[50,80],[50,80],[50,80],[50,80],[50,80],[20,80],[20,80],[20,80],[20,80],[20,80],[20,80],[20,80],[20,80],[20,80],[20,80]]
-    if not SettingArea:
-        return True
-    yd = y - head
-    if yd < 0 or yd > len(lst)-1:
-        return False
-    minX, maxX = lst[yd]
-    if x > minX and x < maxX:
-        return True
-    else:
-        return False
-
 class SIRmodel:
 
     def __init__(self, L=30, p=None, pattern=None):
         self.L = L  # lattice size
         self.illTime = np.zeros([self.L + 2, self.L + 2])
+        self.lst = []
+        if SettingArea:
+            for line in open("range.txt", "r"):
+                tmp = [0,0]
+                tmp[0],tmp[1] = list(map(int, line.split("\t")))
+                self.lst.append(tmp)
+            
         if p > 0:
             lattice = np.random.random([self.L + 2, self.L + 2])
             self.lattice = np.zeros([self.L + 2, self.L + 2], dtype=int) 
@@ -87,7 +78,7 @@ class SIRmodel:
                 for j in range(L+2):
 
                     # 範囲指定
-                    if not isRange(i,j):
+                    if not self.isRange(i, j):
                         continue
                     
                     if lattice[i,j] < p:
@@ -103,10 +94,23 @@ class SIRmodel:
                     self.lattice[x, y] = State.infect.value
         self.past_lattices = []
         self.t = 0
+        
+    def isRange(self, x, y, head=20):
+
+        if not SettingArea:
+            return True
+        yd = y - head
+        if yd < 0 or yd > len(self.lst)-1:
+            return False    
+        minX, maxX = self.lst[yd]
+        if x > minX and x < maxX:
+            return True
+        else:
+            return False
     
     def progress(self, canvas_update, canvas_displayStatus, update):
         self.loop = True
-        self.illTime[:, :] = 0
+        self.illTime[:,:] = 0
         while self.loop:
             try:
                 past_lattice = self.lattice.copy()
@@ -117,7 +121,7 @@ class SIRmodel:
                     for n in range(1, self.L + 1):
 
                         # 範囲指定
-                        if not isRange(m,n):
+                        if not self.isRange(m,n):
                             continue
                         
                         if self.lattice[m,n] == State.suspect.value:
@@ -129,10 +133,10 @@ class SIRmodel:
                                 neighber += 1
                             if self.lattice[m+1,n] == State.infect.value:
                                 neighber += 1
-                            if not(TriMode and isDelta(m,n)): 
+                            if not(TriFlg and isDelta(m,n)): 
                                 if self.lattice[m,n-1] == State.infect.value:
                                     neighber += 1
-                            if not(TriMode and isNabla(m,n)):
+                            if not(TriFlg and isNabla(m,n)):
                                 if self.lattice[m,n+1] == State.infect.value:
                                     neighber += 1
 
@@ -178,19 +182,22 @@ class SIRmodel:
         self.loop = True
         future_lattice = self.lattice
         while self.loop:
-                tmp_lattice = self.past_lattices.pop()
-                changed_rect = np.where(tmp_lattice != future_lattice)
-                for x, y in zip(changed_rect[0], changed_rect[1]):
-                    color = enum2color[tmp_lattice[x, y]]
-                    canvas_update(x, y, color)
-                    self.lattice = tmp_lattice
+            
+            tmp_lattice = self.past_lattices.pop()
+            changed_rect = np.where(tmp_lattice != future_lattice)
+            for x, y in zip(changed_rect[0], changed_rect[1]):
+                color = enum2color[tmp_lattice[x, y]]
+                canvas_update(x, y, color)
+                self.lattice = tmp_lattice
+                # if illTime[x,y] > 0:
+                #    illTime[x,y] -= 1
                 update()
-
-                self.t -= 1
-                if len(self.past_lattices) == 0:
-                    self.loop = False
+                
+            self.t -= 1
+            if len(self.past_lattices) == 0:
+                self.loop = False
                 canvas_displayStatus(tmp_lattice)
-                           
+                    
 class Draw_canvas:
 
     def __init__(self, lg, L):
@@ -214,7 +221,7 @@ class Draw_canvas:
             for x in range(1, self.L + 1):
                 live = self.lg.lattice[x,y]
                 tag = "%d %d" % (x, y)
-                if TriMode:
+                if TriFlg:
                     self.rects[tag] = Tri(x, y, live, tag, self)
                 else:
                     self.rects[tag] = Rect(x, y, live, tag, self)                   
@@ -314,13 +321,34 @@ class TopWindow:
         self.root = Tk()
         self.root.title(title)
         frames = []
+
+        # Frame Button
         for i, arg in enumerate(args):
             frames.append(Frame(self.root, padx=5, pady=5))
             for k, v in arg:
                 Button(frames[i], text=k, command=v).pack(expand=YES, fill='x')
             frames[i].pack(fill='x')
-        self.root.mainloop()
 
+        # Config
+        Label(text = '\nConfig\n').pack()
+        
+        # Form(Radionbutton)
+        tmp = IntVar()
+        Label(text = 'Form:').pack(side=LEFT)
+        triButton = Radiobutton(self.root, text="△", value=True, variable=tmp)
+        triButton.pack( anchor = W )
+        triButton.select()
+        squButton = Radiobutton(self.root, text="□", value=False, variable=tmp)
+        squButton.pack( anchor = W )
+
+        # Probability(Scale)
+        Label(text = 'Prob(%):').pack(side=LEFT)
+        scale = Scale(self.root, from_=0, to=100,orient=HORIZONTAL)
+        scale.set(50)
+        scale.pack()
+
+        self.root.mainloop()
+        
 class Main:
     def __init__(self):
         self.top = TopWindow()
@@ -336,10 +364,10 @@ class Main:
                              (('quit', self.quit),))
 
     def clearSet(self):
-        self.lg = SIRmodel(L, p=0, pattern=None)        
+        self.lg = SIRmodel(L, p=0, pattern=None)
         self.DrawCanvas = Draw_canvas(self.lg, self.lg.L)
 
-    def randSet(self):
+    def randSet(self):                        
         self.lg = SIRmodel(L, p=prob, pattern=None)
         self.DrawCanvas = Draw_canvas(self.lg, self.lg.L)
 
@@ -366,8 +394,9 @@ class Main:
         self.DrawCanvas.canvas.postscript(file=filename)
 
     def quit(self):
+        if self.lg.loop:
+            self.lg.loop = False
         sys.exit()
 
 if __name__ == '__main__':
-
     app = Main()
