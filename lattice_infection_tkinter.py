@@ -14,10 +14,10 @@ from enum import Enum
 ## ---------- Parameters ---------------
 # Rec or Tri Mode
 TriFlg = True
-SettingArea = True
+SettingArea = False
 
 # Probability Setting
-beta = 0.1 # Rate of Infection
+beta = 0.5 # Rate of Infection
 prob = 0.001 # Primitive infection probability
 
 # Time
@@ -66,7 +66,7 @@ class SIRmodel:
         self.illTime = np.zeros([self.L + 2, self.L + 2])
         self.lst = []
         if SettingArea:
-            for line in open("range.txt", "r"):
+            for line in open("./tmp/range.txt", "r"):
                 tmp = [0,0]
                 tmp[0],tmp[1] = list(map(int, line.split("\t")))
                 self.lst.append(tmp)
@@ -110,7 +110,7 @@ class SIRmodel:
     
     def progress(self, canvas_update, canvas_displayStatus, update):
         self.loop = True
-        self.illTime[:,:] = 0
+#        self.illTime[:,:] = 0
         while self.loop:
             try:
                 past_lattice = self.lattice.copy()
@@ -189,9 +189,9 @@ class SIRmodel:
                 color = enum2color[tmp_lattice[x, y]]
                 canvas_update(x, y, color)
                 self.lattice = tmp_lattice
-                # if illTime[x,y] > 0:
-                #    illTime[x,y] -= 1
-                update()
+                if self.lattice[x,y] == State.infect.value:
+                   self.illTime[x,y] -= 1
+            update()
                 
             self.t -= 1
             if len(self.past_lattices) == 0:
