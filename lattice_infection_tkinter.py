@@ -9,6 +9,8 @@ import sys
 import collections
 import math
 from enum import Enum
+from PIL import Image, ImageTk
+
 # import time
 
 ## ---------- Parameters ---------------
@@ -28,7 +30,9 @@ RecTime = 5
 L = 100
 default_size = 1080  # default size of canvas
 
-# Effective Area
+
+# Image
+TKB = './tmp/tsukuba.png'
 
 ## ---------- End ---------------
 
@@ -109,8 +113,8 @@ class SIRmodel:
             return False
     
     def progress(self, canvas_update, canvas_displayStatus, update):
+        
         self.loop = True
-#        self.illTime[:,:] = 0
         while self.loop:
             try:
                 past_lattice = self.lattice.copy()
@@ -224,9 +228,17 @@ class Draw_canvas:
                 if TriFlg:
                     self.rects[tag] = Tri(x, y, live, tag, self)
                 else:
-                    self.rects[tag] = Rect(x, y, live, tag, self)                   
-                self.canvas.pack()
-        
+                    self.rects[tag] = Rect(x, y, live, tag, self)               
+        self.canvas.pack()                        
+
+        # Image
+        image = Image.open(TKB)
+        self.img = ImageTk.PhotoImage(image)
+        lab = Label(self.canvas, image=self.img)        
+        #lab.place(x=0, y=0, relwidth=1, relheight=1)
+        #self.canvas.tag_lower(lab)
+        self.canvas.pack()
+
     def canvas_update(self, x, y, color):
         try:
             v = self.rects["%d %d" % (x, y)]
@@ -278,7 +290,7 @@ class Tri:
         self.x = x
         self.y = y
         self.live = live
-        color = enum2color[live]
+        color = enum2color[live]        
         size = 2
 
         ## Divide M line or W line
@@ -316,7 +328,7 @@ class Tri:
         self.root.canvas.itemconfig(self.ID, fill=color)
 
 class TopWindow:
-
+   
     def show_window(self, title="title", *args):
         self.root = Tk()
         self.root.title(title)
@@ -333,22 +345,31 @@ class TopWindow:
         Label(text = '\nConfig\n').pack()
         
         # Form(Radionbutton)
-        tmp = IntVar()
+        self.tmp_form = BooleanVar()
         Label(text = 'Form:').pack(side=LEFT)
-        triButton = Radiobutton(self.root, text="△", value=True, variable=tmp)
-        triButton.pack( anchor = W )
+        triButton = Radiobutton(self.root, text="△", value=True, variable=self.tmp_form, command=self.changeForm)
         triButton.select()
-        squButton = Radiobutton(self.root, text="□", value=False, variable=tmp)
+        triButton.pack( anchor = W )
+        squButton = Radiobutton(self.root, text="□", value=False, variable=self.tmp_form, command=self.changeForm)
         squButton.pack( anchor = W )
-
-        # Probability(Scale)
-        Label(text = 'Prob(%):').pack(side=LEFT)
-        scale = Scale(self.root, from_=0, to=100,orient=HORIZONTAL)
-        scale.set(50)
-        scale.pack()
-
-        self.root.mainloop()
         
+        # Probability(Scale)
+        self.tmp_prob = DoubleVar()
+        Label(text = 'Prob(%):').pack(side=LEFT)
+        scale = Scale(self.root, from_=0, to=100, orient=HORIZONTAL, variable=self.tmp_prob, command=self.changeBeta)
+        scale.set(beta * 100)
+        scale.pack()
+        self.root.mainloop()
+
+    def changeForm(self):
+        global TriFlg
+        print(self.tmp_form.get())
+        TriFlg = self.tmp_form.get()
+
+    def changeBeta(self, b):
+        global beta
+        beta = float(b)/100.0
+
 class Main:
     def __init__(self):
         self.top = TopWindow()
@@ -394,8 +415,8 @@ class Main:
         self.DrawCanvas.canvas.postscript(file=filename)
 
     def quit(self):
-        if self.lg.loop:
-            self.lg.loop = False
+        if 'self.lg.loop' in locals():
+            self.pause()
         sys.exit()
 
 if __name__ == '__main__':
