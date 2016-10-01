@@ -32,7 +32,7 @@ default_size = 1080  # default size of canvas
 
 
 # Image
-TKB = './tmp/tsukuba.png'
+TKB = './tmp/tsukuba.gif'
 
 ## ---------- End ---------------
 
@@ -128,20 +128,20 @@ class SIRmodel:
                         if not self.isRange(m,n):
                             continue
                         
-                        if self.lattice[m,n] == State.suspect.value:
+                        if past_lattice[m,n] == State.suspect.value:
                             ## 感染判定
                             
                             # 周囲のinfect.value数を調べる
                             neighber = 0
-                            if self.lattice[m-1,n] == State.infect.value:
+                            if past_lattice[m-1,n] == State.infect.value:
                                 neighber += 1
-                            if self.lattice[m+1,n] == State.infect.value:
+                            if past_lattice[m+1,n] == State.infect.value:
                                 neighber += 1
                             if not(TriFlg and isDelta(m,n)): 
-                                if self.lattice[m,n-1] == State.infect.value:
+                                if past_lattice[m,n-1] == State.infect.value:
                                     neighber += 1
                             if not(TriFlg and isNabla(m,n)):
-                                if self.lattice[m,n+1] == State.infect.value:
+                                if past_lattice[m,n+1] == State.infect.value:
                                     neighber += 1
 
                             # 各感染者から感染するか計算    
@@ -220,6 +220,19 @@ class Draw_canvas:
         self.update = self.canvas.update
         self.rects = dict()
         self.past = []
+
+        # Image
+        self.img = PhotoImage(file=TKB)
+        lab = Label(self.canvas, image=self.img)
+        #lab.place(x=0, y=0, relwidth=1, relheight=1)
+        self.canvas.tag_lower(lab)
+        # playButton = Button(self.canvas, text='Play', command=self.canvas.destroy())
+        # playButton.pack()
+
+        # image = Image.open(TKB)
+        # background_image = ImageTk.PhotoImage(image)
+        # background_label = Label(self.canvas, image=background_image)
+        # background_label.place(x=0, y=0, relwidth=1, relheight=1)
         
         for y in range(1, self.L + 1):
             for x in range(1, self.L + 1):
@@ -228,17 +241,11 @@ class Draw_canvas:
                 if TriFlg:
                     self.rects[tag] = Tri(x, y, live, tag, self)
                 else:
-                    self.rects[tag] = Rect(x, y, live, tag, self)               
+                    self.rects[tag] = Rect(x, y, live, tag, self)
+        
         self.canvas.pack()                        
 
-        # Image
-        image = Image.open(TKB)
-        self.img = ImageTk.PhotoImage(image)
-        lab = Label(self.canvas, image=self.img)        
-        #lab.place(x=0, y=0, relwidth=1, relheight=1)
-        #self.canvas.tag_lower(lab)
-        self.canvas.pack()
-
+        
     def canvas_update(self, x, y, color):
         try:
             v = self.rects["%d %d" % (x, y)]
@@ -346,21 +353,31 @@ class TopWindow:
         
         # Form(Radionbutton)
         self.tmp_form = BooleanVar()
-        Label(text = 'Form:').pack(side=LEFT)
+        Label(text = 'Form:').pack()
         triButton = Radiobutton(self.root, text="△", value=True, variable=self.tmp_form, command=self.changeForm)
         triButton.select()
-        triButton.pack( anchor = W )
+        triButton.pack()
         squButton = Radiobutton(self.root, text="□", value=False, variable=self.tmp_form, command=self.changeForm)
-        squButton.pack( anchor = W )
+        squButton.pack()
         
         # Probability(Scale)
         self.tmp_prob = DoubleVar()
-        Label(text = 'Prob(%):').pack(side=LEFT)
+        Label(text = 'Prob(%):').pack()
         scale = Scale(self.root, from_=0, to=100, orient=HORIZONTAL, variable=self.tmp_prob, command=self.changeBeta)
         scale.set(beta * 100)
         scale.pack()
-        self.root.mainloop()
 
+        #Recover time
+        self.tmp_rectime = StringVar()
+        Label(text = 'RecTime:').pack()
+        Ebox = Entry(self.root, textvariable=self.tmp_rectime)
+        Ebox.insert(END, '50')
+        Ebox.pack()
+                
+        Ebox.bind('<Return>', self.changeRectime)
+        
+        self.root.mainloop()
+        
     def changeForm(self):
         global TriFlg
         print(self.tmp_form.get())
@@ -369,6 +386,10 @@ class TopWindow:
     def changeBeta(self, b):
         global beta
         beta = float(b)/100.0
+
+    def changeRectime(self, event):
+        global RecTime
+        RecTime = int(self.tmp_rectime.get())
 
 class Main:
     def __init__(self):
