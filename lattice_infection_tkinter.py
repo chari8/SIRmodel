@@ -46,6 +46,7 @@ class State(Enum):
 susCol = "white"
 infCol = "red"
 recCol = "blue"
+blockCol = "Black"
 
 # Enum2Color
 enum2color = [susCol, infCol, recCol]
@@ -238,10 +239,7 @@ class Draw_canvas:
             for x in range(1, self.L + 1):
                 live = self.lg.lattice[x,y]
                 tag = "%d %d" % (x, y)
-                if TriFlg:
-                    self.rects[tag] = Tri(x, y, live, tag, self)
-                else:
-                    self.rects[tag] = Rect(x, y, live, tag, self)
+                self.rects[tag] = Poly(x, y, live, tag, self)
         
         self.canvas.pack()                        
 
@@ -265,7 +263,7 @@ class Draw_canvas:
             print()
             self.past = count_dict
 
-class Rect:
+class Poly:
 
     def __init__(self, x, y, live, tag, root):
         self.root = root
@@ -273,66 +271,47 @@ class Rect:
         self.y = y
         self.live = live
         color = enum2color[live]
-        self.ID = self.root.cr(2*(x-1)*self.root.r + self.root.margin,
-                              2*(y-1)*self.root.r + self.root.margin,
-                              2*x*self.root.r + self.root.margin,
-                              2*y*self.root.r + self.root.margin,
-                              outline="#202020", fill=color, tag=tag)
-        self.root.canvas.tag_bind(self.ID, '<Button-1>', self.pressed)
-
-    def pressed(self, event):
-
-        # toggle
-        if self.live == State.suspect.value:
-            color = infCol
-        else:
-            color = susCol
-        self.root.lg.lattice[self.x, self.y] = State.infect.value
-        self.root.canvas.itemconfig(self.ID, fill=color)
-
-class Tri:
-
-    def __init__(self, x, y, live, tag, root):
-        self.root = root
-        self.x = x
-        self.y = y
-        self.live = live
-        color = enum2color[live]        
         size = 2
+        triangles = [[0, 0, 0.5, -1, 1, 0], [0, -1, 0.5, 0, 1, -1]] #Δ、∇
+        xh = x/2
+        isD = isDelta(x,y)
 
-        ## Divide M line or W line
-            
-        if isDelta(x,y):
-            # △
-            x /= 2
-            self.ID = self.root.ct(size*x*self.root.r + self.root.margin,
-                              size*y*self.root.r + self.root.margin,
-                              size*(x+0.5)*self.root.r + self.root.margin,
-                              size*(y-1)*self.root.r + self.root.margin,
-                               size*(x+1)*self.root.r + self.root.margin,
-                              size*y*self.root.r + self.root.margin,
+        if TriFlg:
+            self.ID = self.root.ct(size*(xh + triangles[isD][0])*self.root.r + self.root.margin,
+                               size*(y + triangles[isD][1])*self.root.r + self.root.margin,
+                              size*(xh + triangles[isD][2])*self.root.r + self.root.margin,
+                              size*(y + triangles[isD][3])*self.root.r + self.root.margin,
+                               size*(xh + triangles[isD][4])*self.root.r + self.root.margin,
+                              size*(y + triangles[isD][5])*self.root.r + self.root.margin,
                               outline="#202020", fill=color, tag=tag)
         else:
-            # ▽
-            x /= 2
-            self.ID = self.root.ct(size*x*self.root.r + self.root.margin,
+            self.ID = self.root.cr(size*(x-1)*self.root.r + self.root.margin,
                               size*(y-1)*self.root.r + self.root.margin,
-                              size*(x+0.5)*self.root.r + self.root.margin,
+                              size*x*self.root.r + self.root.margin,
                               size*y*self.root.r + self.root.margin,
-                               size*(x+1)*self.root.r + self.root.margin,
-                              size*(y-1)*self.root.r + self.root.margin,
-                              outline="#202020", fill=color, tag=tag)
-        self.root.canvas.tag_bind(self.ID, '<Button-1>', self.pressed)
+                              outline="#202020", fill=color, tag=tag)        
+        self.root.canvas.tag_bind(self.ID, '<Button-1>', self.pressedL)
+        self.root.canvas.tag_bind(self.ID, '<Button-2>', self.pressedR)
 
-    def pressed(self, event):
-
-        # toggle
+    def pressedL(self, event):
+        # toggle        
         if self.live == State.suspect.value:
             color = infCol
+            self.root.lg.lattice[self.x, self.y] = State.infect.value
         else:
             color = susCol
-        self.root.lg.lattice[self.x, self.y] = State.infect.value
+            self.root.lg.lattice[self.x, self.y] = State.suspect.value
         self.root.canvas.itemconfig(self.ID, fill=color)
+
+    def pressedR(self, event):
+        # toggle        
+        if self.live == State.suspect.value:
+            color = blockCol
+            self.root.lg.lattice[self.x, self.y] = State.recover.value
+        else:
+            color = susCol
+            self.root.lg.lattice[self.x, self.y] = State.suspect.value
+        self.root.canvas.itemconfig(self.ID, fill=color)        
 
 class TopWindow:
    
@@ -371,7 +350,7 @@ class TopWindow:
         self.tmp_rectime = StringVar()
         Label(text = 'RecTime:').pack()
         Ebox = Entry(self.root, textvariable=self.tmp_rectime)
-        Ebox.insert(END, '50')
+        Ebox.insert(END, RecTime)
         Ebox.pack()
                 
         Ebox.bind('<Return>', self.changeRectime)
@@ -380,7 +359,6 @@ class TopWindow:
         
     def changeForm(self):
         global TriFlg
-        print(self.tmp_form.get())
         TriFlg = self.tmp_form.get()
 
     def changeBeta(self, b):
