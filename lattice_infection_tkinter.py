@@ -24,7 +24,7 @@ beta = 0.5 # Rate of Infection
 prob = 0.001 # Primitive infection probability
 
 # Time
-Tmax = 2000
+Tmax = 1000
 RecTime = 5
 SusTime = 5
 
@@ -34,6 +34,7 @@ default_size = 1080  # default size of canvas
 
 # File
 RANGE = "range.txt"
+OUTPUT = "output.txt"
 
 ## ---------- End ---------------
 
@@ -69,6 +70,8 @@ class SIRmodel:
         self.L = L  # lattice size
         self.illTime = np.zeros([self.L + 2, self.L + 2])
         self.lst = []
+        
+        # Setting Area
         if SettingArea:
             for line in open(RANGE, "r"):
                 tmp = [0,0]
@@ -261,9 +264,14 @@ class Draw_canvas:
                 tmp.append(lat[i,j])
         count_dict = collections.Counter(tmp)
         if count_dict != self.past:
-            # for k,v in count_dict.items():
-            #     print(v, end="\t")
-            # print()
+            buf = ""
+            for k,v in count_dict.items():
+                bf = str(v) + '\t'
+                buf += bf
+            buf += '\n'
+            with open(OUTPUT, 'a') as f:
+                f.write(buf)
+            f.close()
             self.past = count_dict
 
 class Poly:
@@ -342,7 +350,7 @@ class TopWindow:
         squButton = Radiobutton(self.root, text="□", value=False, variable=self.tmp_form, command=self.changeForm)
         squButton.pack()
 
-        # Form(Radionbutton)
+        # Model(Radionbutton)
         self.tmp_model = BooleanVar()
         Label(text = 'Model:').pack()
         SIRButton = Radiobutton(self.root, text="SIR", value=False, variable=self.tmp_model, command=self.changeModel)
@@ -358,21 +366,30 @@ class TopWindow:
         scale.set(beta * 100)
         scale.pack()
 
-        # Recover time
+        # Recover time(Entry)
         self.tmp_rectime = StringVar()
         Label(text = 'Recover Time:').pack()
-        Ebox = Entry(self.root, textvariable=self.tmp_rectime)
-        Ebox.insert(END, RecTime)
-        Ebox.pack()                
-        Ebox.bind('<Return>', self.changeRectime)
+        EboxR = Entry(self.root, textvariable=self.tmp_rectime)
+        EboxR.insert(END, RecTime)
+        EboxR.pack()                
+        EboxR.bind('<Return>', self.changeRectime)
 
-        # Suspect time
+        # Suspect time(Entry)
         self.tmp_sustime = StringVar()
         Label(text = 'Restoration Time:').pack()
-        Ebox = Entry(self.root, textvariable=self.tmp_sustime)
-        Ebox.insert(END, SusTime)
-        Ebox.pack()                
-        Ebox.bind('<Return>', self.changeSustime)
+        EboxS = Entry(self.root, textvariable=self.tmp_sustime)
+        EboxS.insert(END, SusTime)
+        EboxS.pack()                
+        EboxS.bind('<Return>', self.changeSustime)
+
+        
+        # Range(Entry)
+        self.tmp_range = StringVar()
+        Label(text = 'Range File Name:').pack()
+        EboxRange = Entry(self.root, textvariable=self.tmp_range)
+        EboxRange.insert(END, RANGE)
+        EboxRange.pack()                
+        EboxRange.bind('<Return>', self.changeRange)
 
         self.root.mainloop()
         
@@ -396,6 +413,11 @@ class TopWindow:
         global SusTime
         SusTime = int(self.tmp_sustime.get())
 
+    def changeRange(self, event):
+        global RANGE, SettingArea
+        RANGE = self.tmp_range.get()
+        SettingArea = False if RANGE == "" else True 
+    
 class Main:
     def __init__(self):
         self.top = TopWindow()
