@@ -15,7 +15,8 @@ from PIL import Image, ImageTk
 
 ## ---------- Parameters ---------------
 # Rec or Tri Mode
-TriFlg = True
+isTriangle = True
+isSIRS = False
 SettingArea = False
 
 # Probability Setting
@@ -25,14 +26,14 @@ prob = 0.001 # Primitive infection probability
 # Time
 Tmax = 2000
 RecTime = 5
+SusTime = 5
 
 # Size
 L = 100
 default_size = 1080  # default size of canvas
 
-
-# Image
-TKB = './tmp/tsukuba.gif'
+# File
+RANGE = "range.txt"
 
 ## ---------- End ---------------
 
@@ -41,6 +42,7 @@ class State(Enum):
     suspect = 0
     infect = 1
     recover = 2
+    block = 3
 
 # Color Setting
 susCol = "white"
@@ -49,17 +51,14 @@ recCol = "blue"
 blockCol = "Black"
 
 # Enum2Color
-enum2color = [susCol, infCol, recCol]
+enum2color = [susCol, infCol, recCol, blockCol]
 
 # Useful functions
 def isEven(x):
     return x%2 == 0
 
-def isOdd(x):
-    return not isEven(x)
-
 def isDelta(x,y):
-    return (isEven(x) and isEven(y)) or (isOdd(x) and isOdd(y))
+    return isEven(x+y)
 
 def isNabla(x,y):
     return not isDelta(x,y)
@@ -71,7 +70,7 @@ class SIRmodel:
         self.illTime = np.zeros([self.L + 2, self.L + 2])
         self.lst = []
         if SettingArea:
-            for line in open("./tmp/range.txt", "r"):
+            for line in open(RANGE, "r"):
                 tmp = [0,0]
                 tmp[0],tmp[1] = list(map(int, line.split("\t")))
                 self.lst.append(tmp)
@@ -125,7 +124,7 @@ class SIRmodel:
                 for m in range(1, self.L + 1):
                     for n in range(1, self.L + 1):
 
-                        # 範囲指定
+                        # 範囲外ならpass
                         if not self.isRange(m,n):
                             continue
                         
@@ -138,10 +137,10 @@ class SIRmodel:
                                 neighber += 1
                             if past_lattice[m+1,n] == State.infect.value:
                                 neighber += 1
-                            if not(TriFlg and isDelta(m,n)): 
+                            if not(isTriangle and isNabla(m,n)): 
                                 if past_lattice[m,n-1] == State.infect.value:
                                     neighber += 1
-                            if not(TriFlg and isNabla(m,n)):
+                            if not(isTriangle and isDelta(m,n)):
                                 if past_lattice[m,n+1] == State.infect.value:
                                     neighber += 1
 
@@ -159,8 +158,16 @@ class SIRmodel:
                             else:
                                 self.illTime[m,n] += 1
 
+                        elif self.lattice[m,n] == State.recover.value:
+                            
+                            # SIRSModelならばSuspectへ変化                            
+                            if isSIRS:
+                                if self.illTime[m,n] > RecTime + SusTime:
+                                    self.illTime[m,n] = 0
+                                    self.lattice[m,n] = State.suspect.value
+                                else:
+                                    self.illTime[m,n] += 1
                         else:
-                            # State = Recoverdならばスルー
                             continue
                 
                 # 描画の更新
@@ -222,21 +229,17 @@ class Draw_canvas:
         self.rects = dict()
         self.past = []
 
+        # 画像の挿入については廃止
         # Image
-        self.img = PhotoImage(file=TKB)
-        lab = Label(self.canvas, image=self.img)
-        #lab.place(x=0, y=0, relwidth=1, relheight=1)
-        self.canvas.tag_lower(lab)
-        # playButton = Button(self.canvas, text='Play', command=self.canvas.destroy())
-        # playButton.pack()
-
-        # image = Image.open(TKB)
-        # background_image = ImageTk.PhotoImage(image)
-        # background_label = Label(self.canvas, image=background_image)
-        # background_label.place(x=0, y=0, relwidth=1, relheight=1)
+        # self.img = PhotoImage(file=TKB)
+        # lab = Label(self.canvas, image=self.img)
+        # lab.place(x=0, y=0, relwidth=1, relheight=1)
+        # self.canvas.tag_lower(lab)
+        # playButton = Button(self.canvas, text='Play')
+        # playButton.pack()        
         
-        for y in range(1, self.L + 1):
-            for x in range(1, self.L + 1):
+        for x in range(1, self.L + 1):
+            for y in range(1, self.L + 1):
                 live = self.lg.lattice[x,y]
                 tag = "%d %d" % (x, y)
                 self.rects[tag] = Poly(x, y, live, tag, self)
@@ -258,9 +261,9 @@ class Draw_canvas:
                 tmp.append(lat[i,j])
         count_dict = collections.Counter(tmp)
         if count_dict != self.past:
-            for k,v in count_dict.items():
-                print(v, end="\t")
-            print()
+            # for k,v in count_dict.items():
+            #     print(v, end="\t")
+            # print()
             self.past = count_dict
 
 class Poly:
@@ -276,7 +279,7 @@ class Poly:
         xh = x/2
         isD = isDelta(x,y)
 
-        if TriFlg:
+        if isTriangle:
             self.ID = self.root.ct(size*(xh + triangles[isD][0])*self.root.r + self.root.margin,
                                size*(y + triangles[isD][1])*self.root.r + self.root.margin,
                               size*(xh + triangles[isD][2])*self.root.r + self.root.margin,
@@ -307,7 +310,7 @@ class Poly:
         # toggle        
         if self.live == State.suspect.value:
             color = blockCol
-            self.root.lg.lattice[self.x, self.y] = State.recover.value
+            self.root.lg.lattice[self.x, self.y] = State.block.value
         else:
             color = susCol
             self.root.lg.lattice[self.x, self.y] = State.suspect.value
@@ -338,7 +341,16 @@ class TopWindow:
         triButton.pack()
         squButton = Radiobutton(self.root, text="□", value=False, variable=self.tmp_form, command=self.changeForm)
         squButton.pack()
-        
+
+        # Form(Radionbutton)
+        self.tmp_model = BooleanVar()
+        Label(text = 'Model:').pack()
+        SIRButton = Radiobutton(self.root, text="SIR", value=False, variable=self.tmp_model, command=self.changeModel)
+        SIRButton.select()
+        SIRButton.pack()
+        SIRSButton = Radiobutton(self.root, text="SIRS", value=True, variable=self.tmp_model, command=self.changeModel)
+        SIRSButton.pack()
+
         # Probability(Scale)
         self.tmp_prob = DoubleVar()
         Label(text = 'Prob(%):').pack()
@@ -346,20 +358,31 @@ class TopWindow:
         scale.set(beta * 100)
         scale.pack()
 
-        #Recover time
+        # Recover time
         self.tmp_rectime = StringVar()
-        Label(text = 'RecTime:').pack()
+        Label(text = 'Recover Time:').pack()
         Ebox = Entry(self.root, textvariable=self.tmp_rectime)
         Ebox.insert(END, RecTime)
-        Ebox.pack()
-                
+        Ebox.pack()                
         Ebox.bind('<Return>', self.changeRectime)
-        
+
+        # Suspect time
+        self.tmp_sustime = StringVar()
+        Label(text = 'Restoration Time:').pack()
+        Ebox = Entry(self.root, textvariable=self.tmp_sustime)
+        Ebox.insert(END, SusTime)
+        Ebox.pack()                
+        Ebox.bind('<Return>', self.changeSustime)
+
         self.root.mainloop()
         
     def changeForm(self):
-        global TriFlg
-        TriFlg = self.tmp_form.get()
+        global isTriangle
+        isTriangle = self.tmp_form.get()
+
+    def changeModel(self):
+        global isSIRS
+        isSIRS = self.tmp_model.get()
 
     def changeBeta(self, b):
         global beta
@@ -368,6 +391,10 @@ class TopWindow:
     def changeRectime(self, event):
         global RecTime
         RecTime = int(self.tmp_rectime.get())
+
+    def changeSustime(self, event):
+        global SusTime
+        SusTime = int(self.tmp_sustime.get())
 
 class Main:
     def __init__(self):
@@ -384,10 +411,14 @@ class Main:
                              (('quit', self.quit),))
 
     def clearSet(self):
+        if 'self.lg.loop' in locals():
+            self.pause()        
         self.lg = SIRmodel(L, p=0, pattern=None)
         self.DrawCanvas = Draw_canvas(self.lg, self.lg.L)
 
-    def randSet(self):                        
+    def randSet(self):
+        if 'self.lg.loop' in locals():
+            self.pause()        
         self.lg = SIRmodel(L, p=prob, pattern=None)
         self.DrawCanvas = Draw_canvas(self.lg, self.lg.L)
 
