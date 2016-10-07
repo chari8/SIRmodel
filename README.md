@@ -10,7 +10,6 @@ Python3.x系
 $ python sir.pyで実行
 
 ## 使い方
-GUIの使い方を上から説明します。
 
 * clear set
 
@@ -35,9 +34,17 @@ GUIの使い方を上から説明します。
 * Prob
 
 	ステップごとに隣接するグリッドへ感染する確率p。一般的な感染率は三角の場合
-	$1 - (1 - p)^3$
+	$$
+	\begin{eqnarray}
+	1 - (1 - p)^3
+	\end{eqnarray}
+	$$
 	四角の場合
-	$1 - (1 - p)^4$
+	$$
+	\begin{eqnarray}
+	1 - (1 - p)^4
+	\end{eqnarray}
+	$$
 	で求められる。
 	
 * Recover Time
@@ -51,3 +58,7 @@ GUIの使い方を上から説明します。
 * Range File Name
 
 	感染範囲を制限するファイル名を指定。無記入・ファイル名が見つからない場合は無視。
+
+###感染範囲指定について
+
+上からy行目の値を$$x_m1 x_M1 x_m2 x_M2 \cdots x_mn x_Mn$$とすると、座標(x,y)は$$x_m1 < x < x_M1, x_m2 < x < x_M2, \cdots x_mn < x < x_Mn$$の範囲に含まれるならば感染有効とする。
