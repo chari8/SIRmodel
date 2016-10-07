@@ -33,14 +33,17 @@ L = 100
 default_size = 1080  # default size of canvas
 
 # File
-RANGE = "range.txt"
+RANGE = "range_sample/range_ko.txt"
 OUTPUT = "output.txt"
+
+# Status Text
+STATUS = ""
 
 ## ---------- End ---------------
 
 # State Setting
 class State(Enum):
-    suspect = 0
+    suscept = 0
     infect = 1
     recover = 2
     block = 3
@@ -53,6 +56,7 @@ blockCol = "Black"
 
 # Enum2Color
 enum2color = [susCol, infCol, recCol, blockCol]
+num2State = ["S", "I", "R", "Other"]
 
 # Useful functions
 def isEven(x):
@@ -70,14 +74,24 @@ class SIRmodel:
         self.L = L  # lattice size
         self.illTime = np.zeros([self.L + 2, self.L + 2])
         self.lst = []
-        
-        # Setting Area
-        if SettingArea:
-            for line in open(RANGE, "r"):
-                tmp = [0,0]
-                tmp[0],tmp[1] = list(map(int, line.split("\t")))
-                self.lst.append(tmp)
-            
+
+        global SettingArea
+        try:
+            # Setting Area
+            if SettingArea:
+                for line in open(RANGE, "r"):
+                    lsp = line.strip().split("\t")
+                    tmps = []
+                    while len(lsp) > 0:
+                        tmp = [0,0]
+                        tmp[0] = int(lsp.pop(0))
+                        tmp[1] = int(lsp.pop(0))
+                        tmps.append(tmp)
+                    self.lst.append(tmps)
+        except FileNotFoundError:
+            print("Error : ", RANGE,"is not found!!!")
+            SettingArea = False
+                                    
         if p > 0:
             lattice = np.random.random([self.L + 2, self.L + 2])
             self.lattice = np.zeros([self.L + 2, self.L + 2], dtype=int) 
@@ -91,9 +105,9 @@ class SIRmodel:
                     if lattice[i,j] < p:
                         self.lattice[i,j] = State.infect.value
                     else:
-                        self.lattice[i,j] = State.suspect.value
-            self.lattice[0, :] = self.lattice[self.L+1, :] = State.suspect.value
-            self.lattice[:, 0] = self.lattice[:, self.L + 1] = State.suspect.value
+                        self.lattice[i,j] = State.suscept.value
+            self.lattice[0, :] = self.lattice[self.L+1, :] = State.suscept.value
+            self.lattice[:, 0] = self.lattice[:, self.L + 1] = State.suscept.value
         else:
             self.lattice = np.zeros([self.L + 2, self.L + 2], dtype=int)
             if pattern:
@@ -102,18 +116,19 @@ class SIRmodel:
         self.past_lattices = []
         self.t = 0
         
-    def isRange(self, x, y, head=20):
+    def isRange(self, x, y):
 
         if not SettingArea:
             return True
+        head = self.L // 6
         yd = y - head
         if yd < 0 or yd > len(self.lst)-1:
-            return False    
-        minX, maxX = self.lst[yd]
-        if x > minX and x < maxX:
-            return True
-        else:
             return False
+        for ls in self.lst[yd]:
+            minX, maxX = ls
+            if x > minX and x < maxX:
+                return True
+        return False
     
     def progress(self, canvas_update, canvas_displayStatus, update):
         
@@ -131,7 +146,7 @@ class SIRmodel:
                         if not self.isRange(m,n):
                             continue
                         
-                        if past_lattice[m,n] == State.suspect.value:
+                        if past_lattice[m,n] == State.suscept.value:
                             ## 感染判定
                             
                             # 周囲のinfect.value数を調べる
@@ -163,11 +178,11 @@ class SIRmodel:
 
                         elif self.lattice[m,n] == State.recover.value:
                             
-                            # SIRSModelならばSuspectへ変化                            
+                            # SIRSModelならばSusceptへ変化
                             if isSIRS:
                                 if self.illTime[m,n] > RecTime + SusTime:
                                     self.illTime[m,n] = 0
-                                    self.lattice[m,n] = State.suspect.value
+                                    self.lattice[m,n] = State.suscept.value
                                 else:
                                     self.illTime[m,n] += 1
                         else:
@@ -212,7 +227,8 @@ class SIRmodel:
             if len(self.past_lattices) == 0:
                 self.loop = False
                 canvas_displayStatus(tmp_lattice)
-                    
+
+                
 class Draw_canvas:
 
     def __init__(self, lg, L):
@@ -230,9 +246,9 @@ class Draw_canvas:
         self.ct = self.canvas.create_polygon
         self.update = self.canvas.update
         self.rects = dict()
-        self.past = []
+        self.past_count_dict = []
 
-        # 画像の挿入については廃止
+        # 画像の挿入は廃止
         # Image
         # self.img = PhotoImage(file=TKB)
         # lab = Label(self.canvas, image=self.img)
@@ -246,9 +262,8 @@ class Draw_canvas:
                 live = self.lg.lattice[x,y]
                 tag = "%d %d" % (x, y)
                 self.rects[tag] = Poly(x, y, live, tag, self)
-        
-        self.canvas.pack()                        
 
+        self.canvas.pack()                        
         
     def canvas_update(self, x, y, color):
         try:
@@ -259,20 +274,24 @@ class Draw_canvas:
         
     def canvas_displayStatus(self, lat):
         tmp = []
-        for i in range(1, self.L+1):
+        for i in range(1,self.L+1):
             for j in range(1,self.L+1):
                 tmp.append(lat[i,j])
-        count_dict = collections.Counter(tmp)
-        if count_dict != self.past:
+        count_dict = []
+        for k, s in enumerate(num2State):
+            count_dict.append([s, tmp.count(k)])
+        if count_dict != self.past_count_dict:
             buf = ""
-            for k,v in count_dict.items():
-                bf = str(v) + '\t'
+            for k,v in count_dict:
+                bf = k + ':' + str(v) + '\t'
                 buf += bf
             buf += '\n'
+            print(buf, end="")
             with open(OUTPUT, 'a') as f:
                 f.write(buf)
             f.close()
-            self.past = count_dict
+            Label(self.canvas, text=STATUS)
+        self.past_count_dict = count_dict
 
 class Poly:
 
@@ -300,32 +319,32 @@ class Poly:
                               size*(y-1)*self.root.r + self.root.margin,
                               size*x*self.root.r + self.root.margin,
                               size*y*self.root.r + self.root.margin,
-                              outline="#202020", fill=color, tag=tag)        
+                              outline="#202020", fill=color, tag=tag)
         self.root.canvas.tag_bind(self.ID, '<Button-1>', self.pressedL)
         self.root.canvas.tag_bind(self.ID, '<Button-2>', self.pressedR)
 
     def pressedL(self, event):
         # toggle        
-        if self.live == State.suspect.value:
+        if self.live == State.suscept.value:
             color = infCol
             self.root.lg.lattice[self.x, self.y] = State.infect.value
         else:
             color = susCol
-            self.root.lg.lattice[self.x, self.y] = State.suspect.value
+            self.root.lg.lattice[self.x, self.y] = State.suscept.value
         self.root.canvas.itemconfig(self.ID, fill=color)
 
     def pressedR(self, event):
         # toggle        
-        if self.live == State.suspect.value:
+        if self.live == State.suscept.value:
             color = blockCol
             self.root.lg.lattice[self.x, self.y] = State.block.value
         else:
             color = susCol
-            self.root.lg.lattice[self.x, self.y] = State.suspect.value
-        self.root.canvas.itemconfig(self.ID, fill=color)        
+            self.root.lg.lattice[self.x, self.y] = State.suscept.value
+        self.root.canvas.itemconfig(self.ID, fill=color)
 
 class TopWindow:
-   
+    
     def show_window(self, title="title", *args):
         self.root = Tk()
         self.root.title(title)
@@ -339,15 +358,15 @@ class TopWindow:
             frames[i].pack(fill='x')
 
         # Config
-        Label(text = '\nConfig\n').pack()
+        Label(text = 'Config').pack()
         
-        # Form(Radionbutton)
-        self.tmp_form = BooleanVar()
-        Label(text = 'Form:').pack()
-        triButton = Radiobutton(self.root, text="△", value=True, variable=self.tmp_form, command=self.changeForm)
+        # Grid(Radionbutton)
+        self.tmp_grid = BooleanVar()
+        Label(text = 'Grid:').pack()
+        triButton = Radiobutton(self.root, text="△", value=True, variable=self.tmp_grid, command=self.changeGrid)
         triButton.select()
         triButton.pack()
-        squButton = Radiobutton(self.root, text="□", value=False, variable=self.tmp_form, command=self.changeForm)
+        squButton = Radiobutton(self.root, text="□", value=False, variable=self.tmp_grid, command=self.changeGrid)
         squButton.pack()
 
         # Model(Radionbutton)
@@ -371,17 +390,16 @@ class TopWindow:
         Label(text = 'Recover Time:').pack()
         EboxR = Entry(self.root, textvariable=self.tmp_rectime)
         EboxR.insert(END, RecTime)
-        EboxR.pack()                
+        EboxR.pack()
         EboxR.bind('<Return>', self.changeRectime)
 
-        # Suspect time(Entry)
+        # Suscept time(Entry)
         self.tmp_sustime = StringVar()
         Label(text = 'Restoration Time:').pack()
         EboxS = Entry(self.root, textvariable=self.tmp_sustime)
         EboxS.insert(END, SusTime)
-        EboxS.pack()                
+        EboxS.pack()
         EboxS.bind('<Return>', self.changeSustime)
-
         
         # Range(Entry)
         self.tmp_range = StringVar()
@@ -393,9 +411,9 @@ class TopWindow:
 
         self.root.mainloop()
         
-    def changeForm(self):
+    def changeGrid(self):
         global isTriangle
-        isTriangle = self.tmp_form.get()
+        isTriangle = self.tmp_grid.get()
 
     def changeModel(self):
         global isSIRS
@@ -416,15 +434,26 @@ class TopWindow:
     def changeRange(self, event):
         global RANGE, SettingArea
         RANGE = self.tmp_range.get()
-        SettingArea = False if RANGE == "" else True 
-    
+        SettingArea = False if RANGE == "" else True         
+
+# class ShowStatus:
+
+#     def __init__(self, lg):
+#         self.root = Tk()
+#         self.root.title("Status")
+#         Label(self.root, text=STATUS)
+#         self.root.bind_all('<1>', self.show_status)
+        
+#     def show_status(self, event):
+#         self.label.configure(text = STATUS)
+        
 class Main:
     def __init__(self):
         self.top = TopWindow()
         self.top.show_window("SIR Model",
                              (('clear set', self.clearSet),
                              ('random set', self.randSet),
-                             ),                             
+                             ),
                              (('▶', self.start),
                               ('□', self.pause),
                               ('◁◁', self.rewind),
