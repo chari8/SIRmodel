@@ -305,6 +305,7 @@ class Poly:
         triangles = [[0, 0, 0.5, -1, 1, 0], [0, -1, 0.5, 0, 1, -1]] #Δ、∇
         xh = x/2
         isD = isDelta(x,y)
+        outline_color = "#101010"
 
         if isTriangle:
             self.ID = self.root.ct(size*(xh + triangles[isD][0])*self.root.r + self.root.margin,
@@ -313,13 +314,13 @@ class Poly:
                               size*(y + triangles[isD][3])*self.root.r + self.root.margin,
                                size*(xh + triangles[isD][4])*self.root.r + self.root.margin,
                               size*(y + triangles[isD][5])*self.root.r + self.root.margin,
-                              outline="#202020", fill=color, tag=tag)
+                              outline=outline_color, fill=color, tag=tag)
         else:
             self.ID = self.root.cr(size*(x-1)*self.root.r + self.root.margin,
                               size*(y-1)*self.root.r + self.root.margin,
                               size*x*self.root.r + self.root.margin,
                               size*y*self.root.r + self.root.margin,
-                              outline="#202020", fill=color, tag=tag)
+                              outline=outline_color, fill=color, tag=tag)
         self.root.canvas.tag_bind(self.ID, '<Button-1>', self.pressedL)
         self.root.canvas.tag_bind(self.ID, '<Button-2>', self.pressedR)
 
