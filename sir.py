@@ -9,7 +9,6 @@ import sys
 import collections
 import math
 from enum import Enum
-from PIL import Image, ImageTk
 
 # import time
 
@@ -18,15 +17,16 @@ from PIL import Image, ImageTk
 isTriangle = True
 isSIRS = False
 SettingArea = False
+isSetHotSpot = False
 
 # Probability Setting
-beta = 0.5 # Rate of Infection
+beta = 0.3 # Rate of Infection
 prob = 0.001 # Primitive infection probability
 
 # Time
 Tmax = 1000
-RecTime = 5
-SusTime = 5
+RecTime = 10
+SusTime = 10
 
 # Size
 L = 100
@@ -36,10 +36,15 @@ default_size = 1080  # default size of canvas
 RANGE = "range_sample/range_ko.txt"
 OUTPUT = "output.txt"
 
+# HotSpot (感染しやすい点)
+hotSpot = []
+
+# For Debug
+isDebug = False
+## ---------- End ---------------
+
 # Status Text
 STATUS = ""
-
-## ---------- End ---------------
 
 # State Setting
 class State(Enum):
@@ -52,11 +57,12 @@ class State(Enum):
 susCol = "white"
 infCol = "red"
 recCol = "blue"
-blockCol = "Black"
+blockCol = "grey"
+hotCol = "green"
 
 # Enum2Color
 enum2color = [susCol, infCol, recCol, blockCol]
-num2State = ["S", "I", "R", "Other"]
+num2State = ["S", "I", "R", "Total"]
 
 # Useful functions
 def isEven(x):
@@ -73,9 +79,10 @@ class SIRmodel:
     def __init__(self, L=30, p=None, pattern=None):
         self.L = L  # lattice size
         self.illTime = np.zeros([self.L + 2, self.L + 2])
-        self.lst = []
 
+        # 範囲設定
         global SettingArea
+        self.lst = []
         try:
             # Setting Area
             if SettingArea:
@@ -91,15 +98,13 @@ class SIRmodel:
         except FileNotFoundError:
             print("Error : ", RANGE,"is not found!!!")
             SettingArea = False
-                                    
+
         if p > 0:
             lattice = np.random.random([self.L + 2, self.L + 2])
             self.lattice = np.zeros([self.L + 2, self.L + 2], dtype=int) 
             for i in range(L+2):
                 for j in range(L+2):
-
-                    # 範囲指定
-                    if not self.isRange(i, j):
+                    if not self.isRange(i,j):
                         continue
                     
                     if lattice[i,j] < p:
@@ -115,35 +120,47 @@ class SIRmodel:
                     self.lattice[x, y] = State.infect.value
         self.past_lattices = []
         self.t = 0
-        
-    def isRange(self, x, y):
 
-        if not SettingArea:
-            return True
-        head = self.L // 6
-        yd = y - head
-        if yd < 0 or yd > len(self.lst)-1:
-            return False
-        for ls in self.lst[yd]:
-            minX, maxX = ls
-            if x > minX and x < maxX:
-                return True
-        return False
-    
+        # 範囲外の視覚化
+        self.isArea = np.zeros([self.L+2, self.L+2])
+        for m in range(1, self.L + 1):
+            for n in range(1, self.L + 1):
+                self.isArea[m,n] = self.isRange(m,n)
+                if not self.isArea[m,n]:
+                    self.lattice[m,n] = State.block.value
+
+        # 感染確率点準備
+        # div = 3
+        # self.points = []
+        # for i in range(div):
+        #     for j in range(div):
+        #         self.lattice[i * self.L//div, j * self.L//div] = State.block.value
+        #         self.points.append([i * self.L//div, j * self.L//div])
+        
+        self.Rmax = 10
+        Rmax = self.Rmax
+        self.dist = np.zeros([Rmax, Rmax])
+        for i in range(Rmax):
+            for j in range(Rmax):
+                if self.dist[j,i] > 0:
+                    self.dist[i,j] = self.dist[j,i]
+                self.dist[i,j] = np.sqrt(i**2 + j**2)
+
     def progress(self, canvas_update, canvas_displayStatus, update):
         
         self.loop = True
+
         while self.loop:
-            try:
+            try:                
                 past_lattice = self.lattice.copy()
                 self.past_lattices.append(past_lattice)
-                
+
                 # 隣接格子点の判定
                 for m in range(1, self.L + 1):
                     for n in range(1, self.L + 1):
 
-                        # 範囲外ならpass
-                        if not self.isRange(m,n):
+                        # 範囲外ならばスキップ
+                        if not self.isArea[m,n]:
                             continue
                         
                         if past_lattice[m,n] == State.suscept.value:
@@ -164,7 +181,7 @@ class SIRmodel:
 
                             # 各感染者から感染するか計算    
                             for i in range(neighber):
-                                if np.random.random() < beta:
+                                if np.random.random() < self.getBeta(m,n):
                                     self.lattice[m,n] = State.infect.value
 
                         elif self.lattice[m,n] == State.infect.value:
@@ -191,8 +208,9 @@ class SIRmodel:
                 # 描画の更新
                 changed_rect = np.where(self.lattice != past_lattice)
                 for x, y in zip(changed_rect[0], changed_rect[1]):
-                    color = enum2color[self.lattice[x,y]]                        
-                    canvas_update(x, y, color)
+                    if [x,y] not in hotSpot:
+                        color = enum2color[self.lattice[x,y]]
+                        canvas_update(x, y, color)
                 update()
                 # time.sleep(0.1)
 
@@ -203,12 +221,41 @@ class SIRmodel:
 
                 # 状態表示
                 canvas_displayStatus(self.lattice)
-                
+
             except KeyboardInterrupt:
                 print("stopped.")
                 break
+
+    def isRange(self, x, y):
+
+        if not SettingArea:
+            return True
+        head = self.L // 6
+        yd = y - head
+        if yd < 0 or yd > len(self.lst)-1:
+            return False
+        for ls in self.lst[yd]:
+            minX, maxX = ls
+            if x > minX and x < maxX:
+                return True
+        return False
+
+    def getBeta(self, x, y):
+        
+        Rmax = self.Rmax
+        for X,Y in hotSpot:
+            disX = abs(X - x)
+            disY = abs(Y - y)
+            if (disX < Rmax) and (disY < Rmax):
+                if X == x and Y == y:
+                    return 1.0 #コアは絶対感染
+                d = self.dist[disX, disY]
+                if d > 0:
+                    return min(beta * (1 + 10/d),1.0)
+        return beta
             
     def rewind(self, canvas_update, canvas_displayStatus, update):
+        
         self.loop = True
         future_lattice = self.lattice
         while self.loop:
@@ -227,7 +274,6 @@ class SIRmodel:
             if len(self.past_lattices) == 0:
                 self.loop = False
                 canvas_displayStatus(tmp_lattice)
-
                 
 class Draw_canvas:
 
@@ -256,7 +302,7 @@ class Draw_canvas:
         # self.canvas.tag_lower(lab)
         # playButton = Button(self.canvas, text='Play')
         # playButton.pack()        
-        
+                     
         for x in range(1, self.L + 1):
             for y in range(1, self.L + 1):
                 live = self.lg.lattice[x,y]
@@ -264,7 +310,7 @@ class Draw_canvas:
                 self.rects[tag] = Poly(x, y, live, tag, self)
 
         self.canvas.pack()                        
-        
+    
     def canvas_update(self, x, y, color):
         try:
             v = self.rects["%d %d" % (x, y)]
@@ -273,6 +319,7 @@ class Draw_canvas:
             pass
         
     def canvas_displayStatus(self, lat):
+        
         tmp = []
         for i in range(1,self.L+1):
             for j in range(1,self.L+1):
@@ -280,17 +327,23 @@ class Draw_canvas:
         count_dict = []
         for k, s in enumerate(num2State):
             count_dict.append([s, tmp.count(k)])
-        if count_dict != self.past_count_dict:
+            
+        # 最後の項にはTotalを記載
+        count_dict[3][1] = self.L**2 - count_dict[3][1]
+        
+        if count_dict != self.past_count_dict:            
             buf = ""
             for k,v in count_dict:
                 bf = k + ':' + str(v) + '\t'
                 buf += bf
             buf += '\n'
-            print(buf, end="")
-            with open(OUTPUT, 'a') as f:
-                f.write(buf)
-            f.close()
-            Label(self.canvas, text=STATUS)
+
+            if not isDebug:
+                print(buf, end="")            
+                with open(OUTPUT, 'a') as f:
+                    f.write(buf)
+                    f.close()
+            
         self.past_count_dict = count_dict
 
 class Poly:
@@ -301,11 +354,11 @@ class Poly:
         self.y = y
         self.live = live
         color = enum2color[live]
-        size = 2
+        size = 1.5
         triangles = [[0, 0, 0.5, -1, 1, 0], [0, -1, 0.5, 0, 1, -1]] #Δ、∇
         xh = x/2
         isD = isDelta(x,y)
-        outline_color = "#101010"
+        outline_color = "#030303"
 
         if isTriangle:
             self.ID = self.root.ct(size*(xh + triangles[isD][0])*self.root.r + self.root.margin,
@@ -325,13 +378,26 @@ class Poly:
         self.root.canvas.tag_bind(self.ID, '<Button-2>', self.pressedR)
 
     def pressedL(self, event):
-        # toggle        
-        if self.live == State.suscept.value:
-            color = infCol
-            self.root.lg.lattice[self.x, self.y] = State.infect.value
+        x,y = self.x, self.y
+        
+        if isSetHotSpot:
+            
+            # toggle
+            if [x,y] not in hotSpot:
+                hotSpot.append([x,y])
+                color = hotCol
+            else:
+                hotSpot.remove([x,y])
+                color = susCol
         else:
-            color = susCol
-            self.root.lg.lattice[self.x, self.y] = State.suscept.value
+            
+            # toggle        
+            if self.live == State.suscept.value:
+                color = infCol
+                self.root.lg.lattice[self.x, self.y] = State.infect.value
+            else:
+                color = susCol
+                self.root.lg.lattice[self.x, self.y] = State.suscept.value
         self.root.canvas.itemconfig(self.ID, fill=color)
 
     def pressedR(self, event):
@@ -410,6 +476,15 @@ class TopWindow:
         EboxRange.pack()                
         EboxRange.bind('<Return>', self.changeRange)
 
+        # HotSpot(Radiobutton)
+        self.tmp_hotspot = IntVar()
+        Label(text = 'HotSpot :').pack()
+        HotButtonOFF = Radiobutton(self.root, text="OFF", value=False, variable=self.tmp_hotspot, command=self.setHotSpot)
+        HotButtonOFF.select()
+        HotButtonOFF.pack()
+        HotButtonON = Radiobutton(self.root, text="ON", value=True, variable=self.tmp_hotspot, command=self.setHotSpot)
+        HotButtonON.pack()
+
         self.root.mainloop()
         
     def changeGrid(self):
@@ -435,8 +510,13 @@ class TopWindow:
     def changeRange(self, event):
         global RANGE, SettingArea
         RANGE = self.tmp_range.get()
-        SettingArea = False if RANGE == "" else True         
+        SettingArea = False if RANGE == "" else True
 
+    def setHotSpot(self):
+        global isSetHotSpot        
+        isSetHotSpot = self.tmp_hotspot.get()
+
+# ステータス表示用ウィンドウ（未完成）
 # class ShowStatus:
 
 #     def __init__(self, lg):
@@ -449,6 +529,7 @@ class TopWindow:
 #         self.label.configure(text = STATUS)
         
 class Main:
+    
     def __init__(self):
         self.top = TopWindow()
         self.top.show_window("SIR Model",
@@ -464,13 +545,13 @@ class Main:
 
     def clearSet(self):
         if 'self.lg.loop' in locals():
-            self.pause()        
+            self.pause()
         self.lg = SIRmodel(L, p=0, pattern=None)
         self.DrawCanvas = Draw_canvas(self.lg, self.lg.L)
 
     def randSet(self):
         if 'self.lg.loop' in locals():
-            self.pause()        
+            self.pause()
         self.lg = SIRmodel(L, p=prob, pattern=None)
         self.DrawCanvas = Draw_canvas(self.lg, self.lg.L)
 
