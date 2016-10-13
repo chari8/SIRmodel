@@ -29,11 +29,11 @@ RecTime = 10
 SusTime = 10
 
 # Size
-L = 100
+L = 150
 default_size = 1080  # default size of canvas
 
 # File
-RANGE = "range_sample/range_ko.txt"
+RANGE = "range_sample/range_tkb3.txt"
 OUTPUT = "output.txt"
 
 # HotSpot (感染しやすい点)
@@ -230,7 +230,7 @@ class SIRmodel:
 
         if not SettingArea:
             return True
-        head = self.L // 6
+        head = 0 #self.L // 6
         yd = y - head
         if yd < 0 or yd > len(self.lst)-1:
             return False
@@ -293,7 +293,7 @@ class Draw_canvas:
         self.update = self.canvas.update
         self.rects = dict()
         self.past_count_dict = []
-
+        
         # 画像の挿入は廃止
         # Image
         # self.img = PhotoImage(file=TKB)
@@ -301,16 +301,16 @@ class Draw_canvas:
         # lab.place(x=0, y=0, relwidth=1, relheight=1)
         # self.canvas.tag_lower(lab)
         # playButton = Button(self.canvas, text='Play')
-        # playButton.pack()        
-                     
+        # playButton.pack()
+        
         for x in range(1, self.L + 1):
             for y in range(1, self.L + 1):
                 live = self.lg.lattice[x,y]
                 tag = "%d %d" % (x, y)
                 self.rects[tag] = Poly(x, y, live, tag, self)
-
-        self.canvas.pack()                        
-    
+                
+        self.canvas.pack()
+        
     def canvas_update(self, x, y, color):
         try:
             v = self.rects["%d %d" % (x, y)]
@@ -354,11 +354,12 @@ class Poly:
         self.y = y
         self.live = live
         color = enum2color[live]
-        size = 1.5
+        size = 2.5
         triangles = [[0, 0, 0.5, -1, 1, 0], [0, -1, 0.5, 0, 1, -1]] #Δ、∇
         xh = x/2
         isD = isDelta(x,y)
-        outline_color = "#030303"
+        outline_color = "grey"
+        wid = 0.1
 
         if isTriangle:
             self.ID = self.root.ct(size*(xh + triangles[isD][0])*self.root.r + self.root.margin,
@@ -367,13 +368,13 @@ class Poly:
                               size*(y + triangles[isD][3])*self.root.r + self.root.margin,
                                size*(xh + triangles[isD][4])*self.root.r + self.root.margin,
                               size*(y + triangles[isD][5])*self.root.r + self.root.margin,
-                              outline=outline_color, fill=color, tag=tag)
+                                outline=outline_color, fill=color, tag=tag, width=wid)
         else:
             self.ID = self.root.cr(size*(x-1)*self.root.r + self.root.margin,
                               size*(y-1)*self.root.r + self.root.margin,
                               size*x*self.root.r + self.root.margin,
                               size*y*self.root.r + self.root.margin,
-                              outline=outline_color, fill=color, tag=tag)
+                                outline=outline_color, fill=color, tag=tag, width=wid)
         self.root.canvas.tag_bind(self.ID, '<Button-1>', self.pressedL)
         self.root.canvas.tag_bind(self.ID, '<Button-2>', self.pressedR)
 
@@ -389,24 +390,29 @@ class Poly:
             else:
                 hotSpot.remove([x,y])
                 color = susCol
-        else:
-            
-            # toggle        
+        else:   
+            # toggle
             if self.live == State.suscept.value:
                 color = infCol
-                self.root.lg.lattice[self.x, self.y] = State.infect.value
-            else:
+                self.root.lg.lattice[x, y] = State.infect.value
+                self.live = State.infect.value
+            elif self.live == State.infect.value:
                 color = susCol
-                self.root.lg.lattice[self.x, self.y] = State.suscept.value
+                self.root.lg.lattice[x, y] = State.suscept.value
+                self.live = State.suscept.value
+            else:
+                color = enum2color[self.live]
         self.root.canvas.itemconfig(self.ID, fill=color)
 
     def pressedR(self, event):
         # toggle        
         if self.live == State.suscept.value:
             color = blockCol
+            self.live = State.block.value
             self.root.lg.lattice[self.x, self.y] = State.block.value
         else:
             color = susCol
+            self.live = State.suscept.value
             self.root.lg.lattice[self.x, self.y] = State.suscept.value
         self.root.canvas.itemconfig(self.ID, fill=color)
 
