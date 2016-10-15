@@ -13,10 +13,10 @@ from enum import Enum
 # import time
 
 ## ---------- Parameters ---------------
-# Rec or Tri Mode
+# Flags
 isTriangle = True
 isSIRS = False
-SettingArea = False
+settingAreaMode = 0
 isSetHotSpot = False
 
 # Probability Setting
@@ -34,6 +34,7 @@ default_size = 1080  # default size of canvas
 
 # File
 RANGE = "range_sample/range_tkb3.txt"
+LINES = "lines_sample/lines_giza.txt"
 OUTPUT = "output.txt"
 
 # HotSpot (感染しやすい点)
@@ -81,32 +82,33 @@ class SIRmodel:
         self.illTime = np.zeros([self.L + 2, self.L + 2])
 
         # 範囲設定
-        global SettingArea
+        global settingAreaMode
         self.lst = []
-        try:
-            # Setting Area
-            if SettingArea:
-                for line in open(RANGE, "r"):
+        if settingAreaMode > 0:
+            try:
+                # Setting Area
+                file = RANGE if settingAreaMode==1 else LINES                                
+                for line in open(file, "r"):
                     lsp = line.strip().split("\t")
                     tmps = []
                     while len(lsp) > 0:
-                        tmp = [0,0]
-                        tmp[0] = int(lsp.pop(0))
-                        tmp[1] = int(lsp.pop(0))
-                        tmps.append(tmp)
+                        a = int(lsp.pop(0))
+                        b = int(lsp.pop(0))
+                        tmps.append([a,b])
                     self.lst.append(tmps)
-        except FileNotFoundError:
-            print("Error : ", RANGE,"is not found!!!")
-            SettingArea = False
-
+            except FileNotFoundError:
+                print("Error : ", file,"is not found!!!")
+                settingAreaMode = 0
+            
+        self.lattice = np.zeros([self.L + 2, self.L + 2], dtype=int)    
         if p > 0:
             lattice = np.random.random([self.L + 2, self.L + 2])
-            self.lattice = np.zeros([self.L + 2, self.L + 2], dtype=int) 
+            
+            # 初期感染点の設置
             for i in range(L+2):
                 for j in range(L+2):
-                    if not self.isRange(i,j):
-                        continue
-                    
+                    if not self.isRange(i,j) :
+                        continue                    
                     if lattice[i,j] < p:
                         self.lattice[i,j] = State.infect.value
                     else:
@@ -114,14 +116,13 @@ class SIRmodel:
             self.lattice[0, :] = self.lattice[self.L+1, :] = State.suscept.value
             self.lattice[:, 0] = self.lattice[:, self.L + 1] = State.suscept.value
         else:
-            self.lattice = np.zeros([self.L + 2, self.L + 2], dtype=int)
             if pattern:
                 for x, y in pattern:
                     self.lattice[x, y] = State.infect.value
         self.past_lattices = []
         self.t = 0
 
-        # 範囲外の視覚化
+        # settingAreaMode1 : 範囲外の視覚化
         self.isArea = np.zeros([self.L+2, self.L+2])
         for m in range(1, self.L + 1):
             for n in range(1, self.L + 1):
@@ -129,22 +130,42 @@ class SIRmodel:
                 if not self.isArea[m,n]:
                     self.lattice[m,n] = State.block.value
 
-        # 感染確率点準備
-        # div = 3
-        # self.points = []
-        # for i in range(div):
-        #     for j in range(div):
-        #         self.lattice[i * self.L//div, j * self.L//div] = State.block.value
-        #         self.points.append([i * self.L//div, j * self.L//div])
-        
+        # settingAreaMode3 : LINESの設置
+        if settingAreaMode == 2:
+            self.drawLine(self.lst)
+
+        # HotSpot : Distanceの計算
         self.Rmax = 10
         Rmax = self.Rmax
         self.dist = np.zeros([Rmax, Rmax])
         for i in range(Rmax):
             for j in range(Rmax):
-                if self.dist[j,i] > 0:
+                 if self.dist[j,i] > 0:
                     self.dist[i,j] = self.dist[j,i]
-                self.dist[i,j] = np.sqrt(i**2 + j**2)
+                    self.dist[i,j] = np.sqrt(i**2 + j**2)
+
+    def drawLine(self, dots):
+        print(dots)
+        for dt in dots:
+            for i in range(len(dt)-1):
+                x1,y1 = dt[i]
+                x2,y2 = dt[i+1]
+                if x1 == x2:
+                    head = min(y1,y2+1)
+                    tail = max(y1,y2+1)
+                    self.lattice[x1, head:tail] = State.block.value
+                    self.lattice[x1+1, head:tail] = State.block.value
+                elif y1 == y2:
+                    head = min(x1,x2+1)
+                    tail = max(x1,x2+1)
+                    self.lattice[head:tail, y1] = State.block.value
+                elif abs(x1-x2) == abs(y1-y2):
+                    xb = 1 if x1 <= x2 else -1
+                    yb = 1 if y1 <= y2 else -1
+                    for i, j in zip(range(x1, x2, xb), range(y1, y2, yb)):
+                        self.lattice[i,j] = State.block.value
+                else:
+                    pass
 
     def progress(self, canvas_update, canvas_displayStatus, update):
         
@@ -228,7 +249,7 @@ class SIRmodel:
 
     def isRange(self, x, y):
 
-        if not SettingArea:
+        if not settingAreaMode == 1:
             return True
         head = 0 #self.L // 6
         yd = y - head
@@ -293,6 +314,12 @@ class Draw_canvas:
         self.update = self.canvas.update
         self.rects = dict()
         self.past_count_dict = []
+
+        #スクロールバー
+        # ybar = Scrollbar(self.sub, orient=VERTICAL)
+        # ybar.config(command=self.canvas.yview)
+        # ybar.pack(side=RIGHT, fill=Y)
+        # self.canvas.config(yscrollcommand=ybar.set)
         
         # 画像の挿入は廃止
         # Image
@@ -309,7 +336,7 @@ class Draw_canvas:
                 tag = "%d %d" % (x, y)
                 self.rects[tag] = Poly(x, y, live, tag, self)
                 
-        self.canvas.pack()
+        self.canvas.pack(side=LEFT, expand=YES, fill=BOTH)
         
     def canvas_update(self, x, y, color):
         try:
@@ -339,7 +366,7 @@ class Draw_canvas:
             buf += '\n'
 
             if not isDebug:
-                print(buf, end="")            
+                print(buf, end="")
                 with open(OUTPUT, 'a') as f:
                     f.write(buf)
                     f.close()
@@ -422,7 +449,7 @@ class TopWindow:
         self.root = Tk()
         self.root.title(title)
         frames = []
-
+        
         # Frame Button
         for i, arg in enumerate(args):
             frames.append(Frame(self.root, padx=5, pady=5))
@@ -431,25 +458,28 @@ class TopWindow:
             frames[i].pack(fill='x')
 
         # Config
-        Label(text = 'Config').pack()
+        Label(text = 'Config').pack(anchor = W)
         
-        # Grid(Radionbutton)
+        # Grid(Radiobutton)
         self.tmp_grid = BooleanVar()
         Label(text = 'Grid:').pack()
         triButton = Radiobutton(self.root, text="△", value=True, variable=self.tmp_grid, command=self.changeGrid)
-        triButton.select()
-        triButton.pack()
         squButton = Radiobutton(self.root, text="□", value=False, variable=self.tmp_grid, command=self.changeGrid)
-        squButton.pack()
+        triButton.select()
+        triButton.pack(anchor=W)
+        squButton.pack(anchor=W)
+        # triButton.pack(sticky=W)
+        # squButton.pack(sticky=E)
 
-        # Model(Radionbutton)
+
+        # Model(Radiobutton)
         self.tmp_model = BooleanVar()
         Label(text = 'Model:').pack()
         SIRButton = Radiobutton(self.root, text="SIR", value=False, variable=self.tmp_model, command=self.changeModel)
         SIRButton.select()
-        SIRButton.pack()
+        SIRButton.pack(anchor = W)
         SIRSButton = Radiobutton(self.root, text="SIRS", value=True, variable=self.tmp_model, command=self.changeModel)
-        SIRSButton.pack()
+        SIRSButton.pack(anchor = W)
 
         # Probability(Scale)
         self.tmp_prob = DoubleVar()
@@ -474,22 +504,33 @@ class TopWindow:
         EboxS.pack()
         EboxS.bind('<Return>', self.changeSustime)
         
-        # Range(Entry)
-        self.tmp_range = StringVar()
-        Label(text = 'Range File Name:').pack()
-        EboxRange = Entry(self.root, textvariable=self.tmp_range)
-        EboxRange.insert(END, RANGE)
-        EboxRange.pack()                
+        # Range or Lines(RadioButton and Entry)
+        self.tmp_mode = IntVar()
+        self.tmp_state = 'disabled'
+        Label(text = 'Infection Area Mode:').pack()
+        ModeButtonNo = Radiobutton(self.root, text="No limit", value=0, variable=self.tmp_mode, command=self.changeMode)
+        ModeButtonRange = Radiobutton(self.root, text="Range", value=1, variable=self.tmp_mode, command=self.changeMode)
+        ModeButtonLines = Radiobutton(self.root, text="Lines", value=2, variable=self.tmp_mode, command=self.changeMode)
+        ModeButtonNo.select()
+        ModeButtonNo.pack(anchor = W)
+        ModeButtonRange.pack(anchor = W)
+        ModeButtonLines.pack(anchor = W)
+        
+        self.tmp_file = StringVar()
+        Label(text = 'File Name:').pack()
+        EboxRange = Entry(self.root, textvariable=self.tmp_file, state=self.tmp_state)
+        EboxRange.pack()
         EboxRange.bind('<Return>', self.changeRange)
+        self.EboxRange = EboxRange
 
-        # HotSpot(Radiobutton)
+        # SwitchLeftButton(Radiobutton)
         self.tmp_hotspot = IntVar()
-        Label(text = 'HotSpot :').pack()
-        HotButtonOFF = Radiobutton(self.root, text="OFF", value=False, variable=self.tmp_hotspot, command=self.setHotSpot)
-        HotButtonOFF.select()
-        HotButtonOFF.pack()
-        HotButtonON = Radiobutton(self.root, text="ON", value=True, variable=self.tmp_hotspot, command=self.setHotSpot)
-        HotButtonON.pack()
+        Label(text = 'LeftButton :').pack()
+        InfectedButton = Radiobutton(self.root, text="Infected", value=False, variable=self.tmp_hotspot, command=self.setHotSpot)
+        HotSpotButton = Radiobutton(self.root, text="HotSpot", value=True, variable=self.tmp_hotspot, command=self.setHotSpot)
+        InfectedButton.select()
+        InfectedButton.pack(anchor = W, side=LEFT)
+        HotSpotButton.pack(anchor = W, side=RIGHT)
 
         self.root.mainloop()
         
@@ -513,10 +554,23 @@ class TopWindow:
         global SusTime
         SusTime = int(self.tmp_sustime.get())
 
+    def changeMode(self):
+        global settingAreaMode
+        settingAreaMode = self.tmp_mode.get()
+        self.tmp_state = 'normal' if settingAreaMode > 0 else 'disabled'
+        self.EboxRange.configure(state=self.tmp_state)
+        self.EboxRange.delete(0, END)
+        if settingAreaMode > 0:
+            file = RANGE if settingAreaMode==1 else LINES
+            self.EboxRange.insert(END, file)            
+            
     def changeRange(self, event):
-        global RANGE, SettingArea
-        RANGE = self.tmp_range.get()
-        SettingArea = False if RANGE == "" else True
+        if settingAreaMode == 1:
+            global RANGE
+            RANGE = self.tmp_file.get()
+        else:
+            global LINES
+            LINES = self.tmp_file.get()
 
     def setHotSpot(self):
         global isSetHotSpot        
@@ -547,7 +601,7 @@ class Main:
                               ('◁◁', self.rewind),
                              ),
                              (('save', self.pr),),
-                             (('quit', self.quit),))
+                             (('quit', self.quit),))        
 
     def clearSet(self):
         if 'self.lg.loop' in locals():
