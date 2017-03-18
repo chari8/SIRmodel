@@ -1,4 +1,4 @@
 /tmp/
 test.py
 *.txt
-=
+__pycache__/

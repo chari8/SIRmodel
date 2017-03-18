@@ -13,6 +13,7 @@ from enum import Enum
 
 ## ---------- Parameters ---------------
 # Flags
+isAgent = True
 isTriangle = True
 isSIRS = False
 settingAreaMode = 0
@@ -46,12 +47,14 @@ isDebug = False
 # Status Text
 STATUS = ""
 
+
 # State Setting
 class State(Enum):
     suscept = 0
     infect = 1
     recover = 2
     block = 3
+
 
 # Color Setting
 susCol = "white"
@@ -60,9 +63,11 @@ recCol = "blue"
 blockCol = "grey"
 hotCol = "green"
 
+
 # Enum2Color
 enum2color = [susCol, infCol, recCol, blockCol]
 num2State = ["S", "I", "R", "Block"]
+
 
 # Useful functions
 def isEven(x):
@@ -73,8 +78,13 @@ def isDelta(x,y):
 
 def isNabla(x,y):
     return not isDelta(x,y)
-# SIRmodel
 
+
+
+
+
+
+# SIRmodel
 class SIRmodel:
 
     def __init__(self, L=30, p=None, pattern=None):
@@ -296,9 +306,9 @@ class SIRmodel:
                 canvas_displayStatus(tmp_lattice)
 
 class Draw_canvas:
+    """class to Draw_canvas"""
 
     def __init__(self, lg, L):
-
         self.lg = lg
         self.L = L
         self.r = int(default_size / (2 * self.L))
@@ -314,21 +324,6 @@ class Draw_canvas:
         self.rects = dict()
         self.past_count_dict = []
 
-        #スクロールバー
-        # ybar = Scrollbar(self.sub, orient=VERTICAL)
-        # ybar.config(command=self.canvas.yview)
-        # ybar.pack(side=RIGHT, fill=Y)
-        # self.canvas.config(yscrollcommand=ybar.set)
-        
-        # 画像の挿入は廃止
-        # Image
-        # self.img = PhotoImage(file=TKB)
-        # lab = Label(self.canvas, image=self.img)
-        # lab.place(x=0, y=0, relwidth=1, relheight=1)
-        # self.canvas.tag_lower(lab)
-        # playButton = Button(self.canvas, text='Play')
-        # playButton.pack()
-        
         for x in range(1, self.L + 1):
             for y in range(1, self.L + 1):
                 live = self.lg.lattice[x,y]
@@ -376,6 +371,7 @@ class Draw_canvas:
         self.past_count_dict = count_dict
 
 class Poly:
+    """class to draw each polygon"""
 
     def __init__(self, x, y, live, tag, root):
         self.root = root
@@ -404,8 +400,27 @@ class Poly:
                               size*x*self.root.r + self.root.margin,
                               size*y*self.root.r + self.root.margin,
                                 outline=outline_color, fill=color, tag=tag, width=wid)
-        self.root.canvas.tag_bind(self.ID, '<Button-1>', self.pressedL)
-        self.root.canvas.tag_bind(self.ID, '<Button-2>', self.pressedR)
+        self.root.canvas.tag_bind(self.ID, '<Button-1>', self.showNum) #left click
+        self.root.canvas.tag_bind(self.ID, '<Button-2>', self.showNum) #right click
+
+    def showNum(self, event):
+        pass
+
+    def sigmoid(x, gain=0, offset_x=0):
+        gain = 10
+        offset_x = 0.2
+        return ((np.tanh(((x + offset_x)*gain)/2)+1)/2)
+
+    def sigColor(x):
+        gain = 10
+        offset_x = 0.2
+        offset_green = 0.6
+        x = (x * 2 ) -1
+        red = sigmoid(x, gain, offset_x)
+        blue = 1 -sigmoid(x, gain, offset_x)
+        green = sigmoid(x, gain, offset_green) + (1-sigmoid(x, gain, -1*offset_green))
+        green = green -1.0
+        return (blue, green, red) 
 
     def pressedL(self, event):
         x,y = self.x, self.y
@@ -468,9 +483,12 @@ class TopWindow:
         # Grid(Radiobutton)
         self.tmp_grid = BooleanVar()
         Label(text = 'Grid:').pack()
-        triButton = Radiobutton(self.root, text="△", value=True, variable=self.tmp_grid, command=self.changeGrid)
-        squButton = Radiobutton(self.root, text="□", value=False, variable=self.tmp_grid, command=self.changeGrid)
-        triButton.select()
+        triButton = Radiobutton(self.root, text="△", value=isTriangle, variable=self.tmp_grid, command=self.changeGrid)
+        squButton = Radiobutton(self.root, text="□", value=not isTriangle, variable=self.tmp_grid, command=self.changeGrid)
+        if isTriangle:
+            triButton.select()
+        else:
+            squButton.select()
         triButton.pack(anchor=W)
         squButton.pack(anchor=W)
         # triButton.pack(sticky=W)
@@ -636,4 +654,5 @@ class Main:
         sys.exit()
 
 if __name__ == '__main__':
+    import pdb; pdb.set_trace()
     app = Main()
