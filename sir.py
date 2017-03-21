@@ -10,6 +10,7 @@ import sys
 import collections
 import math
 from enum import Enum
+import pdb
 
 ## ---------- Parameters ---------------
 # Flags
@@ -127,6 +128,7 @@ class SIRmodel:
             self.lattice[:, 0] = self.lattice[:, self.L + 1] = State.suscept.value
         else:
             if pattern:
+                pdb.set_trace()
                 for x, y in pattern:
                     self.lattice[x, y] = State.infect.value
         self.past_lattices = []
@@ -654,5 +656,4 @@ class Main:
         sys.exit()
 
 if __name__ == '__main__':
-    import pdb; pdb.set_trace()
     app = Main()
