@@ -4,6 +4,7 @@
 # written by ssh0, September 2014.
 ## Parameters and definitions
 
+
 from tkinter import *
 import numpy as np
 import sys
@@ -14,8 +15,8 @@ from enum import Enum
 ## ---------- Parameters ---------------
 # Flags
 isAgent = True
-isTriangle = True
-isSIRS = False
+isTriangle = False
+isSIRS = True
 settingAreaMode = 0
 isSetHotSpot = False
 
@@ -29,8 +30,11 @@ RecTime = 10
 SusTime = 10
 
 # Size
-L = 150
+L = 100 #grid number
+#default_size = 1080  # default size of canvas
 default_size = 1080  # default size of canvas
+default_cell_size = 10 # default size of cell 
+default_population = 100000 # default population
 
 # File
 RANGE = "range_sample/range_tkb3.txt"
@@ -50,10 +54,10 @@ STATUS = ""
 
 # State Setting
 class State(Enum):
+    block = 3
+    recover = 2
     suscept = 0
     infect = 1
-    recover = 2
-    block = 3
 
 
 # Color Setting
@@ -66,6 +70,7 @@ hotCol = "green"
 
 # Enum2Color
 enum2color = [susCol, infCol, recCol, blockCol]
+#enum2color = [blockCol, recCol, susCol, infCol]
 num2State = ["S", "I", "R", "Block"]
 
 
@@ -80,16 +85,32 @@ def isNabla(x,y):
     return not isDelta(x,y)
 
 
+# Color func
 
+def sigmoid(x, gain=1, offset_x=0):
+    return ((np.tanh(((x + offset_x)*gain)/2)+1)/2)
 
+def sigColor(x):
+    gain = 10
+    offset_red = -0.1
+    offset_blue = -1*offset_red
+    offset_green = 0.3
+    rgbnum = 255
+    x = (x * 2 ) -1
+    red = sigmoid(x, gain, offset_red*2)
+    blue = 1 - sigmoid(x, gain, offset_blue*2)
+    green = sigmoid(x, gain, offset_green*2) + (1-sigmoid(x, gain, -1*offset_green*2))
+    green = green -1.0
+    import math as m
+    return "#%02x%02x%02x" % (m.ceil(blue*rgbnum), m.ceil(green*rgbnum), m.ceil(red*rgbnum)) 
 
-
+    
 # SIRmodel
 class SIRmodel:
 
     def __init__(self, L=30, p=None, pattern=None):
         self.L = L  # lattice size
-        self.illTime = np.zeros([self.L + 2, self.L + 2])
+        self.illTime = np.zeros([self.L + 2, self.L + 2, 10])
 
         # 範囲設定
         global settingAreaMode
@@ -110,11 +131,12 @@ class SIRmodel:
                 print("Error : ", file,"is not found!!!")
                 settingAreaMode = 0
             
-        self.lattice = np.zeros([self.L + 2, self.L + 2], dtype=int)    
+        self.lattice = np.zeros([self.L + 2, self.L + 2, 10], dtype=int)    
         if p > 0:
-            lattice = np.random.random([self.L + 2, self.L + 2])
             
+            """
             # 初期感染点の設置
+            lattice = np.random.random([self.L + 2, self.L + 2, 10])
             for i in range(L+2):
                 for j in range(L+2):
                     if not self.isRange(i,j) :
@@ -125,6 +147,15 @@ class SIRmodel:
                         self.lattice[i,j] = State.suscept.value
             self.lattice[0, :] = self.lattice[self.L+1, :] = State.suscept.value
             self.lattice[:, 0] = self.lattice[:, self.L + 1] = State.suscept.value
+            """
+            #set agent
+            for i in range(L+2):
+                for j in range(L+2):
+                    self.lattice[i,j,:4]=[0.2,0.2,0.2,0.2] #set direction
+                    #here goes function to set people
+                    self.lattice[i,j,5]= np.random.randint(0,1)
+                    self.lattice[i,j,6:]=[-1,-1,-1,-1,-1,-1]
+
         else:
             if pattern:
                 for x, y in pattern:
@@ -240,6 +271,7 @@ class SIRmodel:
                 for x, y in zip(changed_rect[0], changed_rect[1]):
                     if [x,y] not in hotSpot:
                         color = enum2color[self.lattice[x,y]]
+#color = sigColor(self.lattice[x,y]/4)
                         canvas_update(x, y, color)
                 update()
                 # time.sleep(0.1)
@@ -258,7 +290,7 @@ class SIRmodel:
 
     def isRange(self, x, y):
 
-        if not settingAreaMode == 1:
+        if settingAreaMode != 1:
             return True
         head = 0 #self.L // 6
         yd = y - head
@@ -294,6 +326,7 @@ class SIRmodel:
             changed_rect = np.where(tmp_lattice != future_lattice)
             for x, y in zip(changed_rect[0], changed_rect[1]):
                 color = enum2color[tmp_lattice[x, y]]
+#color = sigColor(tmp_lattice[x,y]/4)
                 canvas_update(x, y, color)
                 self.lattice = tmp_lattice
                 if self.lattice[x,y] == State.infect.value:
@@ -326,6 +359,7 @@ class Draw_canvas:
 
         for x in range(1, self.L + 1):
             for y in range(1, self.L + 1):
+                """here goes function to show specific params of lattice default:population"""
                 live = self.lg.lattice[x,y]
                 tag = "%d %d" % (x, y)
                 self.rects[tag] = Poly(x, y, live, tag, self)
@@ -377,8 +411,9 @@ class Poly:
         self.root = root
         self.x = x
         self.y = y
-        self.live = live
+#self.live = live
         color = enum2color[live]
+#color = sigColor(live/4)
         size = 2.5
         triangles = [[0, 0, 0.5, -1, 1, 0], [0, -1, 0.5, 0, 1, -1]] #Δ、∇
         xh = x/2
@@ -400,27 +435,13 @@ class Poly:
                               size*x*self.root.r + self.root.margin,
                               size*y*self.root.r + self.root.margin,
                                 outline=outline_color, fill=color, tag=tag, width=wid)
-        self.root.canvas.tag_bind(self.ID, '<Button-1>', self.showNum) #left click
-        self.root.canvas.tag_bind(self.ID, '<Button-2>', self.showNum) #right click
+#self.root.canvas.tag_bind(self.ID, '<Button-1>', self.showNum) #left click
+#self.root.canvas.tag_bind(self.ID, '<Button-2>', self.showNum) #right click
 
     def showNum(self, event):
         pass
 
-    def sigmoid(x, gain=0, offset_x=0):
-        gain = 10
-        offset_x = 0.2
-        return ((np.tanh(((x + offset_x)*gain)/2)+1)/2)
-
-    def sigColor(x):
-        gain = 10
-        offset_x = 0.2
-        offset_green = 0.6
-        x = (x * 2 ) -1
-        red = sigmoid(x, gain, offset_x)
-        blue = 1 -sigmoid(x, gain, offset_x)
-        green = sigmoid(x, gain, offset_green) + (1-sigmoid(x, gain, -1*offset_green))
-        green = green -1.0
-        return (blue, green, red) 
+"""
 
     def pressedL(self, event):
         x,y = self.x, self.y
@@ -459,6 +480,7 @@ class Poly:
             self.live = State.suscept.value
             self.root.lg.lattice[self.x, self.y] = State.suscept.value
         self.root.canvas.itemconfig(self.ID, fill=color)
+"""
 
 
 class TopWindow:
@@ -498,10 +520,14 @@ class TopWindow:
         # Model(Radiobutton)
         self.tmp_model = BooleanVar()
         Label(text = 'Model:').pack()
-        SIRButton = Radiobutton(self.root, text="SIR", value=False, variable=self.tmp_model, command=self.changeModel)
-        SIRButton.select()
+        SIRButton = Radiobutton(self.root, text="SIR", value=isSIRS, variable=self.tmp_model, command=self.changeModel)
+        SIRSButton = Radiobutton(self.root, text="SIRS", value=not isSIRS, variable=self.tmp_model, command=self.changeModel)
+        if isSIRS:
+            SIRButton.select()
+        else:
+            SIRSButton.select()
+
         SIRButton.pack(anchor = W)
-        SIRSButton = Radiobutton(self.root, text="SIRS", value=True, variable=self.tmp_model, command=self.changeModel)
         SIRSButton.pack(anchor = W)
 
         # Probability(Scale)
@@ -654,5 +680,5 @@ class Main:
         sys.exit()
 
 if __name__ == '__main__':
-    import pdb; pdb.set_trace()
+#import pdb; pdb.set_trace()
     app = Main()
