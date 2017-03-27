@@ -33,8 +33,7 @@ SusTime = 10
 L = 100 #grid number
 #default_size = 1080  # default size of canvas
 default_size = 1080  # default size of canvas
-default_cell_size = 10 # default size of cell 
-default_population = 100000 # default population
+default_cell_size = 6 # default size of cell 
 
 # File
 RANGE = "range_sample/range_tkb3.txt"
@@ -58,6 +57,7 @@ class State(Enum):
     recover = 2
     suscept = 0
     infect = 1
+    p_block = np.array([-1,-1,-1,-1])
 
 
 # Color Setting
@@ -112,6 +112,8 @@ class SIRmodel:
         self.L = L  # lattice size
         self.illTime = np.zeros([self.L + 2, self.L + 2, 10])
 
+        self.population = np.zeros([1000,3])
+
         # 範囲設定
         global settingAreaMode
         self.lst = []
@@ -151,10 +153,10 @@ class SIRmodel:
             #set agent
             for i in range(L+2):
                 for j in range(L+2):
-                    self.lattice[i,j,:4]=[0.2,0.2,0.2,0.2] #set direction
+                    self.lattice[i,j,:4]=[0.2]*4 #set direction
                     #here goes function to set people
-                    self.lattice[i,j,5]= np.random.randint(0,1)
-                    self.lattice[i,j,6:]=[-1,-1,-1,-1,-1,-1]
+                    self.lattice[i,j,4]= np.random.randint(0,1)
+                    self.lattice[i,j,5:]=[-1]*5
 
         else:
             if pattern:
@@ -169,7 +171,7 @@ class SIRmodel:
             for n in range(1, self.L + 1):
                 self.isArea[m,n] = self.isRange(m,n)
                 if not self.isArea[m,n]:
-                    self.lattice[m,n] = State.block.value
+                    self.lattice[m,n,:4] = [State.block.value]*4
 
         # settingAreaMode3 : LINESの設置
         if settingAreaMode == 2:
@@ -186,6 +188,7 @@ class SIRmodel:
                     self.dist[i,j] = np.sqrt(i**2 + j**2)
 
     def drawLine(self, dots):
+        """only virtical, horizontal or 45degree lines are allowed"""
         for dt in dots:
             for i in range(len(dt)-1):
                 x1,y1 = dt[i]
@@ -224,6 +227,56 @@ class SIRmodel:
                         if not self.isArea[m,n]:
                             continue
                         
+                        # infection processing
+                        cell = past_lattice[m,n,4:]
+                        totalNum = len(cell)
+                        infCell = np.where(cell == State.infect.value)[0]
+                        susCell = np.where(cell == State.suscept.value)[0]
+                        recCell = np.where(cell == State.recover.value)[0]
+                        infNum = len(infCell)
+                        susNum = len(susCell)
+
+                        # stocastic process + illTime process
+                        #q = np.exp(beta * infNum / totalNum)
+                        q = 1 - (1-self.getBeta(m,n))**infNum
+
+                        for susCellNum in susCell:
+                            if np.random.random() <= q:
+                                cell[susCellNum] = State.infect.value
+
+                        for infCellNum in infCell:
+                            if self.illTime[m,n, 4 + infCellNum] > Rectime:
+                                cell[infCellNum] = State.recover.value
+                                if not isSIRS:
+                                    self.illTime[m,n, 4 + infCellNum] = 0
+                            else:
+                                self.illTime[m,n, 4 + infCellNum] += 1
+
+                        for recCellNum in recCell:
+                            if isSIRS:
+                                if self.illTime[m,n,4+recCellNum] > recTime + susTime:
+                                    cell[recCellNum] = State.suscept.value
+                                    self.illTime[m,n,4+recCellNum] = 0
+                                else:
+                                    self.illTime[m,n,4+recCellNum] += 1
+                                    
+                        #move people
+                        direction = np.dot(past_lattice[m,n,:4], np.tri(4).transpose())
+                        for cellNum in range(len(cell)):
+                            param = len(np.which(direction < np.random.random())[0])
+                            if param == 0: #go up
+                                position = np.where(self.lattice[m-1,n] == -1)[0]
+                                self.lattice[m-1,n,4+position[0]] = cell[cellNum]
+                                self.illTime
+                            elif param == 1: #go down
+                            elif param == 2: # go left
+                            elif param == 3: # go right
+                            else: #stay in the same cell
+
+
+
+                        # move people
+                        """
                         if past_lattice[m,n] == State.suscept.value:
                             ## 感染判定
                             
@@ -265,13 +318,14 @@ class SIRmodel:
                                     self.illTime[m,n] += 1
                         else:
                             continue
+                        """
                 
                 # 描画の更新
                 changed_rect = np.where(self.lattice != past_lattice)
                 for x, y in zip(changed_rect[0], changed_rect[1]):
                     if [x,y] not in hotSpot:
                         color = enum2color[self.lattice[x,y]]
-#color = sigColor(self.lattice[x,y]/4)
+                        #color = sigColor(self.lattice[x,y]/4)
                         canvas_update(x, y, color)
                 update()
                 # time.sleep(0.1)
@@ -357,6 +411,7 @@ class Draw_canvas:
         self.rects = dict()
         self.past_count_dict = []
 
+        #here rect need to be update for the population lattice
         for x in range(1, self.L + 1):
             for y in range(1, self.L + 1):
                 """here goes function to show specific params of lattice default:population"""
