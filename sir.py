@@ -1,10 +1,8 @@
-#! /usr/bin/env python
-# -*- coding:utf-8 -*-
-#
 # written by ssh0, September 2014.
+# function to move population added by chari8, March  2017.
+
+
 ## Parameters and definitions
-
-
 from tkinter import *
 import numpy as np
 import sys
@@ -17,7 +15,7 @@ import pdb
 # Flags
 isAgent = True
 isTriangle = False
-isSIRS = True
+isSIRS = False
 settingAreaMode = 0
 isSetHotSpot = False
 
@@ -234,6 +232,7 @@ class SIRmodel:
         while self.loop:
             try:
                 past_lattice = self.lattice.copy()
+                self.lattice[:, :, 4:] = -1
                 self.past_lattices.append(past_lattice)
 
                 # 隣接格子点の判定
@@ -290,34 +289,34 @@ class SIRmodel:
 
                         #move people
                         tri = np.tri(4, dtype=int).transpose()
-                        direction = np.dot(past_lattice[m,n, :4], tri).astype(np.float64)
-                        direction /= 10
+                        direction = np.dot(past_lattice[m,n, :4], tri).astype(np.float64) / 10
                         for popAddr in cell:
                             if popAddr == -1:
                                 continue
                             direction_num = np.where(direction < np.random.random())[0].shape[0]
-                            if direction_num == 0 and (self.lattice[m-1, n, :4] == -1).all(): #is upper cell is in range?
+                            if direction_num == 0 and (past_lattice[m-1, n, :4] == -1).all(): #is upper cell is in range?
                                 direction_num = 1
-                            if direction_num == 1 and (self.lattice[m+1, n, :4] == -1).all(): #is lower cell is in range?
+                            if direction_num == 1 and (past_lattice[m+1, n, :4] == -1).all(): #is lower cell is in range?
                                 direction_num = 0
-                            if direction_num == 2 and (self.lattice[m, n-1, :4] == -1).all(): #is left cell is in range?
+                            if direction_num == 2 and (past_lattice[m, n-1, :4] == -1).all(): #is left cell is in range?
                                 direction_num = 3
-                            if direction_num == 3 and (self.lattice[m, n+1, :4] == -1).all(): #is right cell is in range?
+                            if direction_num == 3 and (past_lattice[m, n+1, :4] == -1).all(): #is right cell is in range?
                                 direction_num = 2
                             if direction_num == 0: #go up
                                 position = np.where(self.lattice[m-1, n, 4:] == -1)[0]
-                                self.lattice[m-1, n, position[0]] = popAddr
+                                self.lattice[m-1, n, 4+position[0]] = popAddr
                             elif direction_num == 1: #go down
                                 position = np.where(self.lattice[m+1, n, 4:] == -1)[0]
-                                self.lattice[m+1, n, position[0]] = popAddr
+                                self.lattice[m+1, n, 4+position[0]] = popAddr
                             elif direction_num == 2: # go left
                                 position = np.where(self.lattice[m, n-1, 4:] == -1)[0]
-                                self.lattice[m, n-1, position[0]] = popAddr
+                                self.lattice[m, n-1, 4+position[0]] = popAddr
                             elif direction_num == 3: # go right
                                 position = np.where(self.lattice[m, n+1, 4:] == -1)[0]
-                                self.lattice[m, n+1, position[0]] = popAddr
+                                self.lattice[m, n+1, 4+position[0]] = popAddr
                             else: #stay in the same cell
-                                continue
+                                position = np.where(self.lattice[m, n, 4:] == -1)[0]
+                                self.lattice[m, n, 4+position[0]] = popAddr
 
                         """
                         if past_lattice[m,n] == State.suscept.value:
@@ -494,8 +493,10 @@ class Draw_canvas:
                 
         self.canvas.pack(side=LEFT, expand=YES, fill=BOTH)
 
-        for st in num2State:
-            print(st,":\t", end="\n")
+        #for st in num2State:
+            #print(st,":\t", end="")
+        
+        print("Total\tInfect\tSuscept\tRecover")
         
     def canvas_update(self, x, y, color):
         try:
@@ -520,7 +521,7 @@ class Draw_canvas:
             buf += bf
             
         if not isDebug:
-            print(buf, end="\n")
+            print(buf)
             with open(OUTPUT, 'a') as f:
                 f.write(buf)
                 f.close()
@@ -564,7 +565,7 @@ class Poly:
         #color = enum2color[live]
         #color = sigColor(live/4)
         color = sigColor(param)
-        size = 2.5
+        size = 2 #2.5
         triangles = [[0, 0, 0.5, -1, 1, 0], [0, -1, 0.5, 0, 1, -1]] #Δ、∇
         xh = x/2
         isD = isDelta(x,y)
@@ -669,12 +670,12 @@ class TopWindow:
         # Model(Radiobutton)
         self.tmp_model = BooleanVar()
         Label(text = 'Model:').pack()
-        SIRButton = Radiobutton(self.root, text="SIR", value=isSIRS, variable=self.tmp_model, command=self.changeModel)
-        SIRSButton = Radiobutton(self.root, text="SIRS", value=not isSIRS, variable=self.tmp_model, command=self.changeModel)
+        SIRButton = Radiobutton(self.root, text="SIR", value= not isSIRS, variable=self.tmp_model, command=self.changeModel)
+        SIRSButton = Radiobutton(self.root, text="SIRS", value=isSIRS, variable=self.tmp_model, command=self.changeModel)
         if isSIRS:
-            SIRButton.select()
-        else:
             SIRSButton.select()
+        else:
+            SIRButton.select()
 
         SIRButton.pack(anchor = W)
         SIRSButton.pack(anchor = W)
