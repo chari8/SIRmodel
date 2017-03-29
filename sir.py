@@ -1,9 +1,8 @@
-#! /usr/bin/env python
-# -*- coding:utf-8 -*-
-#
 # written by ssh0, September 2014.
-## Parameters and definitions
+# function to move population added by chari8, March  2017.
 
+
+## Parameters and definitions
 from tkinter import *
 import numpy as np
 import sys
@@ -15,14 +14,14 @@ import pdb
 ## ---------- Parameters ---------------
 # Flags
 isAgent = True
-isTriangle = True
+isTriangle = False
 isSIRS = False
 settingAreaMode = 0
 isSetHotSpot = False
 
 # Probability Setting
 beta = 0.3 # Rate of Infection
-prob = 0.001 # Primitive infection probability
+default_i_ratio = 0.01 #0.001 # ration of initial infected
 
 # Time
 Tmax = 1000
@@ -30,8 +29,10 @@ RecTime = 10
 SusTime = 10
 
 # Size
-L = 150
-default_size = 1080  # default size of canvas
+L = 50 #150 #grid number
+default_size = 540 #1080  # default size of canvas
+default_population = 10000  #default population number
+default_cell_size = 20  #default cell size
 
 # File
 RANGE = "range_sample/range_tkb3.txt"
@@ -51,10 +52,10 @@ STATUS = ""
 
 # State Setting
 class State(Enum):
+    block = 3
+    recover = 2
     suscept = 0
     infect = 1
-    recover = 2
-    block = 3
 
 
 # Color Setting
@@ -67,6 +68,7 @@ hotCol = "green"
 
 # Enum2Color
 enum2color = [susCol, infCol, recCol, blockCol]
+#enum2color = [blockCol, recCol, susCol, infCol]
 num2State = ["S", "I", "R", "Block"]
 
 
@@ -81,24 +83,41 @@ def isNabla(x,y):
     return not isDelta(x,y)
 
 
+# Color func
 
+def sigmoid(x, gain=1, offset_x=0):
+    return ((np.tanh(((x + offset_x)*gain)/2)+1)/2)
 
+def sigColor(x):
+    gain = 10
+    offset_red = -0.1
+    offset_blue = -1*offset_red
+    offset_green = 0.3
+    rgbnum = 255
+    x = (x * 2 ) -1
+    red = sigmoid(x, gain, offset_red*2)
+    blue = 1 - sigmoid(x, gain, offset_blue*2)
+    green = sigmoid(x, gain, offset_green*2) + (1-sigmoid(x, gain, -1*offset_green*2))
+    green = green -1.0
+    import math as m
+    return "#%02x%02x%02x" % (m.ceil(blue*rgbnum), m.ceil(green*rgbnum), m.ceil(red*rgbnum)) 
 
 
 # SIRmodel
 class SIRmodel:
 
-    def __init__(self, L=30, p=None, pattern=None):
+    def __init__(self, L=30, i_ratio=None, pattern=None):
         self.L = L  # lattice size
-        self.illTime = np.zeros([self.L + 2, self.L + 2])
+        #self.illTime = np.zeros([self.L + 2, self.L + 2, default_cell_size])
 
         # 範囲設定
         global settingAreaMode
         self.lst = []
         if settingAreaMode > 0:
+            #usually not used
             try:
                 # Setting Area
-                file = RANGE if settingAreaMode==1 else LINES                                
+                file = RANGE if settingAreaMode==1 else LINES
                 for line in open(file, "r"):
                     lsp = line.strip().split("\t")
                     tmps = []
@@ -110,12 +129,17 @@ class SIRmodel:
             except FileNotFoundError:
                 print("Error : ", file,"is not found!!!")
                 settingAreaMode = 0
-            
-        self.lattice = np.zeros([self.L + 2, self.L + 2], dtype=int)    
+
+        self.lattice = np.zeros([self.L + 2, self.L + 2, default_cell_size*2],dtype=int)
+
+        self.population = np.zeros([default_population, 3],dtype=int) #array for store population
+
+        self.past_count_dict = []
+
+        """
         if p > 0:
-            lattice = np.random.random([self.L + 2, self.L + 2])
-            
             # 初期感染点の設置
+            lattice = np.random.random([self.L + 2, self.L + 2, 10])
             for i in range(L+2):
                 for j in range(L+2):
                     if not self.isRange(i,j) :
@@ -126,6 +150,28 @@ class SIRmodel:
                         self.lattice[i,j] = State.suscept.value
             self.lattice[0, :] = self.lattice[self.L+1, :] = State.suscept.value
             self.lattice[:, 0] = self.lattice[:, self.L + 1] = State.suscept.value
+        """
+
+        if i_ratio > 0:
+            #set population
+            population_address = 0
+            self.lattice[:] = -1
+            for i in range(1,L+1):
+                for j in range(1,L+1):
+                    self.lattice[i,j,:4] = 2 #set direction
+                    #set people
+                    population_num = default_cell_size*2
+                    while population_num > default_cell_size:
+                        population_num = np.random.poisson(np.round(default_population/(L**2)))
+                    for k in range(population_num):
+                        if population_address >= default_population:
+                            continue
+                        self.lattice[i,j,4+k] = population_address
+                        if np.random.random() <= i_ratio:
+                            self.population[population_address,0] = State.infect.value
+                        else:
+                            self.population[population_address,0] = State.suscept.value
+                        population_address += 1
         else:
             if pattern:
                 pdb.set_trace()
@@ -134,13 +180,14 @@ class SIRmodel:
         self.past_lattices = []
         self.t = 0
 
+
         # settingAreaMode1 : 範囲外の視覚化
         self.isArea = np.zeros([self.L+2, self.L+2])
         for m in range(1, self.L + 1):
             for n in range(1, self.L + 1):
                 self.isArea[m,n] = self.isRange(m,n)
                 if not self.isArea[m,n]:
-                    self.lattice[m,n] = State.block.value
+                    self.lattice[m,n,:4] = State.block.value
 
         # settingAreaMode3 : LINESの設置
         if settingAreaMode == 2:
@@ -157,6 +204,7 @@ class SIRmodel:
                     self.dist[i,j] = np.sqrt(i**2 + j**2)
 
     def drawLine(self, dots):
+        """only virtical, horizontal or 45degreed lines are allowed"""
         for dt in dots:
             for i in range(len(dt)-1):
                 x1,y1 = dt[i]
@@ -183,8 +231,9 @@ class SIRmodel:
         self.loop = True
 
         while self.loop:
-            try:                
+            try:
                 past_lattice = self.lattice.copy()
+                self.lattice[:, :, 4:] = -1
                 self.past_lattices.append(past_lattice)
 
                 # 隣接格子点の判定
@@ -194,7 +243,83 @@ class SIRmodel:
                         # 範囲外ならばスキップ
                         if not self.isArea[m,n]:
                             continue
-                        
+
+                        # infection processing
+                        cell = past_lattice[m,n,4:]
+                        totalNum = 0
+                        infNum = 0
+                        infCell = []
+                        susCell = []
+                        recCell = []
+
+                        for popAddr in cell:
+                            if popAddr == -1:
+                                continue
+                            totalNum += 1
+                            state_val =  self.population[popAddr, 0]
+                            if state_val == State.infect.value:
+                                infCell.append(popAddr)
+                                infNum += 1
+                            elif state_val == State.suscept.value:
+                                susCell.append(popAddr)
+                            else:
+                                recCell.append(popAddr)
+
+                        # stochastic process
+                        #q = np.exp(beta * infNum / totalNum)
+                        q = 1 - (1-self.getBeta(m,n))**infNum
+
+                        for susPopAddr in susCell:
+                            if np.random.random() <= q:
+                                self.population[susPopAddr, 0] = State.infect.value
+
+                        for infPopAddr in infCell:
+                            if self.population[infPopAddr, 1] > RecTime:
+                                self.population[infPopAddr, 0] = State.recover.value
+                                if not isSIRS:
+                                    self.population[infPopAddr, 1] = 0
+                            else:
+                                self.population[infPopAddr, 1] += 1
+
+                        for recPopAddr in recCell:
+                            if isSIRS:
+                                if self.population[recPopAddr, 1] > RecTime + SusTime:
+                                    self.population[recPopAddr] = [State.suscept.value, 0, -1]
+                                else:
+                                    self.population[recPopAddr, 1] += 1
+
+                        #move people
+                        tri = np.tri(4, dtype=int).transpose()
+                        direction = np.dot(past_lattice[m,n, :4], tri).astype(np.float64) / 10
+                        for popAddr in cell:
+                            if popAddr == -1:
+                                continue
+                            direction_num = np.where(direction < np.random.random())[0].shape[0]
+                            if direction_num == 0 and (past_lattice[m-1, n, :4] == -1).all(): #is upper cell is in range?
+                                direction_num = 1
+                            if direction_num == 1 and (past_lattice[m+1, n, :4] == -1).all(): #is lower cell is in range?
+                                direction_num = 0
+                            if direction_num == 2 and (past_lattice[m, n-1, :4] == -1).all(): #is left cell is in range?
+                                direction_num = 3
+                            if direction_num == 3 and (past_lattice[m, n+1, :4] == -1).all(): #is right cell is in range?
+                                direction_num = 2
+                            if direction_num == 0: #go up
+                                position = np.where(self.lattice[m-1, n, 4:] == -1)[0]
+                                self.lattice[m-1, n, 4+position[0]] = popAddr
+                            elif direction_num == 1: #go down
+                                position = np.where(self.lattice[m+1, n, 4:] == -1)[0]
+                                self.lattice[m+1, n, 4+position[0]] = popAddr
+                            elif direction_num == 2: # go left
+                                position = np.where(self.lattice[m, n-1, 4:] == -1)[0]
+                                self.lattice[m, n-1, 4+position[0]] = popAddr
+                            elif direction_num == 3: # go right
+                                position = np.where(self.lattice[m, n+1, 4:] == -1)[0]
+                                self.lattice[m, n+1, 4+position[0]] = popAddr
+                            else: #stay in the same cell
+                                position = np.where(self.lattice[m, n, 4:] == -1)[0]
+                                self.lattice[m, n, 4+position[0]] = popAddr
+
+                        """
                         if past_lattice[m,n] == State.suscept.value:
                             ## 感染判定
                             
@@ -210,23 +335,18 @@ class SIRmodel:
                             if not(isTriangle and isDelta(m,n)):
                                 if past_lattice[m,n+1] == State.infect.value:
                                     neighber += 1
-
-                            # 各感染者から感染するか計算    
+                            # 各感染者から感染するか計算
                             for i in range(neighber):
                                 if np.random.random() < self.getBeta(m,n):
                                     self.lattice[m,n] = State.infect.value
-
                         elif self.lattice[m,n] == State.infect.value:
-                            
                             # State = InfectならばillTimeをインクリメント
                             # 一定時間でInfectからRecoverへ
                             if self.illTime[m,n] > RecTime:
                                 self.lattice[m,n] = State.recover.value
                             else:
                                 self.illTime[m,n] += 1
-
                         elif self.lattice[m,n] == State.recover.value:
-                            
                             # SIRSModelならばSusceptへ変化
                             if isSIRS:
                                 if self.illTime[m,n] > RecTime + SusTime:
@@ -236,12 +356,32 @@ class SIRmodel:
                                     self.illTime[m,n] += 1
                         else:
                             continue
-                
+                        """
+
                 # 描画の更新
                 changed_rect = np.where(self.lattice != past_lattice)
                 for x, y in zip(changed_rect[0], changed_rect[1]):
                     if [x,y] not in hotSpot:
-                        color = enum2color[self.lattice[x,y]]
+                        #color = enum2color[self.lattice[x,y]]
+                        #color = sigColor(self.lattice[x,y]/4)
+                        cell = self.lattice[x,y, 4:]
+                        totalNum = 0
+                        infNum = 0
+                        susNum = 0
+                        for popAddr in cell:
+                            if popAddr == -1:
+                                continue
+                            totalNum += 1
+                            state_val = self.population[popAddr, 0]
+                            if state_val == State.infect.value:
+                                infNum += 1
+                            elif state_val == State.infect.value:
+                                susNum += 1
+                        if totalNum == 0:
+                            param = 0
+                        else:
+                            param = infNum / totalNum
+                        color = sigColor(param)
                         canvas_update(x, y, color)
                 update()
                 # time.sleep(0.1)
@@ -252,7 +392,7 @@ class SIRmodel:
                     self.loop = False
 
                 # 状態表示
-                canvas_displayStatus(self.lattice)
+                canvas_displayStatus(self.lattice, self.population, self.past_count_dict)
 
             except KeyboardInterrupt:
                 print("stopped.")
@@ -260,7 +400,7 @@ class SIRmodel:
 
     def isRange(self, x, y):
 
-        if not settingAreaMode == 1:
+        if settingAreaMode != 1:
             return True
         head = 0 #self.L // 6
         yd = y - head
@@ -273,7 +413,7 @@ class SIRmodel:
         return False
 
     def getBeta(self, x, y):
-        
+
         Rmax = self.Rmax
         for X,Y in hotSpot:
             disX = abs(X - x)
@@ -285,23 +425,25 @@ class SIRmodel:
                 if d > 0:
                     return min(beta * (1 + 10/d),1.0)
         return beta
-            
+
     def rewind(self, canvas_update, canvas_displayStatus, update):
-        
+        """not available currently"""
+
         self.loop = True
         future_lattice = self.lattice
         while self.loop:
-            
+
             tmp_lattice = self.past_lattices.pop()
             changed_rect = np.where(tmp_lattice != future_lattice)
             for x, y in zip(changed_rect[0], changed_rect[1]):
                 color = enum2color[tmp_lattice[x, y]]
+                #color = sigColor(tmp_lattice[x,y]/4)
                 canvas_update(x, y, color)
                 self.lattice = tmp_lattice
                 if self.lattice[x,y] == State.infect.value:
                    self.illTime[x,y] -= 1
             update()
-                
+
             self.t -= 1
             if len(self.past_lattices) == 0:
                 self.loop = False
@@ -326,16 +468,36 @@ class Draw_canvas:
         self.rects = dict()
         self.past_count_dict = []
 
+        #under dev
         for x in range(1, self.L + 1):
             for y in range(1, self.L + 1):
-                live = self.lg.lattice[x,y]
+                """here goes function to show specific params of lattice default:infection ratio"""
+                cell = self.lg.lattice[x,y,4:]
+                totalNum = 0
+                infNum = 0
+                susNum = 0
+                for popAddr in cell:
+                    if popAddr == -1:
+                        continue
+                    totalNum += 1
+                    state_val = self.lg.population[popAddr,0]
+                    if state_val == State.infect.value:
+                        infNum += 1
+                    elif state_val == State.infect.value:
+                        susNum += 1
+                if totalNum == 0:
+                    param = 0
+                else:
+                    param = infNum / totalNum
                 tag = "%d %d" % (x, y)
-                self.rects[tag] = Poly(x, y, live, tag, self)
+                self.rects[tag] = Poly(x, y, param, tag, self)
                 
         self.canvas.pack(side=LEFT, expand=YES, fill=BOTH)
 
-        for st in num2State:
-            print(st,":\t", end="")
+        #for st in num2State:
+            #print(st,":\t", end="")
+        
+        print("Total\tInfect\tSuscept\tRecover")
         
     def canvas_update(self, x, y, color):
         try:
@@ -344,8 +506,28 @@ class Draw_canvas:
         except:
             pass
         
-    def canvas_displayStatus(self, lat):
+    def canvas_displayStatus(self, lat, population, past_count_dict):
         
+        totalNum = np.where(population[:, 0] != -1)[0].shape[0]
+        totalInfNum = np.where(population[:, 0] == State.infect.value)[0].shape[0]
+        totalSusNum = np.where(population[:, 0] == State.suscept.value)[0].shape[0]
+        totalRecNum = np.where(population[:, 0] == State.recover.value)[0].shape[0]
+
+        count_dict = [totalNum, totalInfNum, totalSusNum, totalRecNum]
+        past_count_dict.append(count_dict)
+
+        buf = ""
+        for nums in count_dict:
+            bf = str(nums) + "\t"
+            buf += bf
+            
+        if not isDebug:
+            print(buf)
+            with open(OUTPUT, 'a') as f:
+                f.write(buf)
+                f.close()
+
+        """
         tmp = []
         for i in range(1,self.L+1):
             for j in range(1,self.L+1):
@@ -356,7 +538,7 @@ class Draw_canvas:
             
         # # 最後の項にはTotalを記載
         # count_dict[3][1] = self.L**2 - count_dict[3][1]
-        
+
         if count_dict != self.past_count_dict:
             buf = ""
             for k,v in count_dict:
@@ -369,19 +551,22 @@ class Draw_canvas:
                 with open(OUTPUT, 'a') as f:
                     f.write(buf)
                     f.close()
-            
+
         self.past_count_dict = count_dict
+        """
 
 class Poly:
-    """class to draw each polygon"""
+    """export each polygon with sigcolor"""
 
-    def __init__(self, x, y, live, tag, root):
+    def __init__(self, x, y, param, tag, root):
         self.root = root
         self.x = x
         self.y = y
-        self.live = live
-        color = enum2color[live]
-        size = 2.5
+        #self.live = live
+        #color = enum2color[live]
+        #color = sigColor(live/4)
+        color = sigColor(param)
+        size = 2 #2.5
         triangles = [[0, 0, 0.5, -1, 1, 0], [0, -1, 0.5, 0, 1, -1]] #Δ、∇
         xh = x/2
         isD = isDelta(x,y)
@@ -401,34 +586,19 @@ class Poly:
                               size*(y-1)*self.root.r + self.root.margin,
                               size*x*self.root.r + self.root.margin,
                               size*y*self.root.r + self.root.margin,
-                                outline=outline_color, fill=color, tag=tag, width=wid)
-        self.root.canvas.tag_bind(self.ID, '<Button-1>', self.showNum) #left click
-        self.root.canvas.tag_bind(self.ID, '<Button-2>', self.showNum) #right click
+                              outline=outline_color, fill=color, tag=tag, width=wid)
+        #self.root.canvas.tag_bind(self.ID, '<Button-1>', self.showNum) #left click
+        #self.root.canvas.tag_bind(self.ID, '<Button-2>', self.showNum) #right click
 
     def showNum(self, event):
         pass
 
-    def sigmoid(x, gain=0, offset_x=0):
-        gain = 10
-        offset_x = 0.2
-        return ((np.tanh(((x + offset_x)*gain)/2)+1)/2)
-
-    def sigColor(x):
-        gain = 10
-        offset_x = 0.2
-        offset_green = 0.6
-        x = (x * 2 ) -1
-        red = sigmoid(x, gain, offset_x)
-        blue = 1 -sigmoid(x, gain, offset_x)
-        green = sigmoid(x, gain, offset_green) + (1-sigmoid(x, gain, -1*offset_green))
-        green = green -1.0
-        return (blue, green, red) 
-
+    """
     def pressedL(self, event):
         x,y = self.x, self.y
-        
+
         if isSetHotSpot:
-            
+
             # toggle
             if [x,y] not in hotSpot:
                 hotSpot.append([x,y])
@@ -436,7 +606,7 @@ class Poly:
             else:
                 hotSpot.remove([x,y])
                 color = susCol
-        else:   
+        else:
             # toggle
             if self.live == State.suscept.value:
                 color = infCol
@@ -461,6 +631,7 @@ class Poly:
             self.live = State.suscept.value
             self.root.lg.lattice[self.x, self.y] = State.suscept.value
         self.root.canvas.itemconfig(self.ID, fill=color)
+    """
 
 
 class TopWindow:
@@ -471,7 +642,7 @@ class TopWindow:
     def show_window(self, title="title", *args):
         self.root.title(title)
         frames = []
-        
+
         # Frame Button
         for i, arg in enumerate(args):
             frames.append(Frame(self.root, padx=5, pady=5))
@@ -481,7 +652,7 @@ class TopWindow:
 
         # Config
         Label(text = 'Config').pack(anchor = W)
-        
+
         # Grid(Radiobutton)
         self.tmp_grid = BooleanVar()
         Label(text = 'Grid:').pack()
@@ -500,15 +671,19 @@ class TopWindow:
         # Model(Radiobutton)
         self.tmp_model = BooleanVar()
         Label(text = 'Model:').pack()
-        SIRButton = Radiobutton(self.root, text="SIR", value=False, variable=self.tmp_model, command=self.changeModel)
-        SIRButton.select()
+        SIRButton = Radiobutton(self.root, text="SIR", value= not isSIRS, variable=self.tmp_model, command=self.changeModel)
+        SIRSButton = Radiobutton(self.root, text="SIRS", value=isSIRS, variable=self.tmp_model, command=self.changeModel)
+        if isSIRS:
+            SIRSButton.select()
+        else:
+            SIRButton.select()
+
         SIRButton.pack(anchor = W)
-        SIRSButton = Radiobutton(self.root, text="SIRS", value=True, variable=self.tmp_model, command=self.changeModel)
         SIRSButton.pack(anchor = W)
 
         # Probability(Scale)
         self.tmp_prob = DoubleVar()
-        Label(text = 'Prob(%):').pack()
+        Label(text = 'Beta(%):').pack()
         scale = Scale(self.root, from_=0, to=100, orient=HORIZONTAL, variable=self.tmp_prob, command=self.changeBeta)
         scale.set(beta * 100)
         scale.pack()
@@ -528,7 +703,7 @@ class TopWindow:
         EboxS.insert(END, SusTime)
         EboxS.pack()
         EboxS.bind('<Return>', self.changeSustime)
-        
+
         # Range or Lines(RadioButton and Entry)
         self.tmp_mode = IntVar()
         self.tmp_state = 'disabled'
@@ -540,7 +715,7 @@ class TopWindow:
         ModeButtonNo.pack(anchor = W)
         ModeButtonRange.pack(anchor = W)
         ModeButtonLines.pack(anchor = W)
-        
+
         self.tmp_file = StringVar()
         Label(text = 'File Name:').pack()
         EboxRange = Entry(self.root, textvariable=self.tmp_file, state=self.tmp_state)
@@ -558,7 +733,7 @@ class TopWindow:
         HotSpotButton.pack(anchor = W, side=RIGHT)
 
         self.root.mainloop()
-        
+
     def changeGrid(self):
         global isTriangle
         isTriangle = self.tmp_grid.get()
@@ -614,18 +789,19 @@ class Main:
                               ('◁◁', self.rewind),
                              ),
                              (('save', self.pr),),
-                             (('quit', self.quit),))        
+                             (('quit', self.quit),))
 
     def clearSet(self):
         if 'self.lg.loop' in locals():
             self.pause()
-        self.lg = SIRmodel(L, p=0, pattern=None)
+        self.lg = SIRmodel(L, i_ratio=0, pattern=None)
         self.DrawCanvas = Draw_canvas(self.lg, self.lg.L)
 
     def randSet(self):
         if 'self.lg.loop' in locals():
             self.pause()
-        self.lg = SIRmodel(L, p=prob, pattern=None)
+        #pdb.set_trace()
+        self.lg = SIRmodel(L, i_ratio=default_i_ratio, pattern=None)
         self.DrawCanvas = Draw_canvas(self.lg, self.lg.L)
 
     def start(self):
@@ -636,7 +812,7 @@ class Main:
 
     def pause(self):
         self.lg.loop = False
-        
+
     def pr(self):
         import tkinter.filedialog
         import os
