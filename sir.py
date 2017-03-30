@@ -9,6 +9,7 @@ import sys
 import collections
 import math
 from enum import Enum
+import math
 import pdb
 
 ## ---------- Parameters ---------------
@@ -18,10 +19,11 @@ isTriangle = False
 isSIRS = False
 settingAreaMode = 0
 isSetHotSpot = False
+useGradColor = True
 
 # Probability Setting
 beta = 0.3 # Rate of Infection
-default_i_ratio = 0.01 #0.001 # ration of initial infected
+default_i_ratio = 0.001 #0.001 # ration of initial infected
 
 # Time
 Tmax = 1000
@@ -89,18 +91,23 @@ def sigmoid(x, gain=1, offset_x=0):
     return ((np.tanh(((x + offset_x)*gain)/2)+1)/2)
 
 def sigColor(x):
-    gain = 10
-    offset_red = -0.1
-    offset_blue = -1*offset_red
-    offset_green = 0.3
+    global useGradColor
     rgbnum = 255
-    x = (x * 2 ) -1
-    red = sigmoid(x, gain, offset_red*2)
-    blue = 1 - sigmoid(x, gain, offset_blue*2)
-    green = sigmoid(x, gain, offset_green*2) + (1-sigmoid(x, gain, -1*offset_green*2))
-    green = green -1.0
-    import math as m
-    return "#%02x%02x%02x" % (m.ceil(blue*rgbnum), m.ceil(green*rgbnum), m.ceil(red*rgbnum)) 
+    if useGradColor:
+        red = 1
+        green = 1-x
+        blue = 1-x
+    else:
+        gain = 10
+        offset_red = -0.1
+        offset_blue = -1*offset_red
+        offset_green = 0.3
+        x = (x * 2 ) -1
+        red = sigmoid(x, gain, offset_red*2)
+        blue = 1 - sigmoid(x, gain, offset_blue*2)
+        green = sigmoid(x, gain, offset_green*2) + (1-sigmoid(x, gain, -1*offset_green*2))
+        green = green -1.0
+    return "#%02x%02x%02x" % (math.ceil(red*rgbnum), math.ceil(green*rgbnum), math.ceil(blue*rgbnum)) 
 
 
 # SIRmodel
@@ -133,6 +140,7 @@ class SIRmodel:
         self.lattice = np.zeros([self.L + 2, self.L + 2, default_cell_size*2],dtype=int)
 
         self.population = np.zeros([default_population, 3],dtype=int) #array for store population
+        self.population[:,0] = -1
 
         self.past_count_dict = []
 
@@ -160,26 +168,28 @@ class SIRmodel:
                 for j in range(1,L+1):
                     self.lattice[i,j,:4] = 2 #set direction
                     #set people
-                    population_num = default_cell_size*2
+                    if isAgent:
+                        population_num = default_cell_size*2
+                    else:
+                        population_num = 1  
                     while population_num > default_cell_size:
                         population_num = np.random.poisson(np.round(default_population/(L**2)))
                     for k in range(population_num):
                         if population_address >= default_population:
                             continue
                         self.lattice[i,j,4+k] = population_address
-                        if np.random.random() <= i_ratio:
+                        if np.random.random() < i_ratio:
                             self.population[population_address,0] = State.infect.value
                         else:
                             self.population[population_address,0] = State.suscept.value
                         population_address += 1
         else:
             if pattern:
-                pdb.set_trace()
                 for x, y in pattern:
                     self.lattice[x, y] = State.infect.value
+
         self.past_lattices = []
         self.t = 0
-
 
         # settingAreaMode1 : 範囲外の視覚化
         self.isArea = np.zeros([self.L+2, self.L+2])
@@ -253,19 +263,31 @@ class SIRmodel:
                         recCell = []
 
                         for popAddr in cell:
-                            if popAddr == -1:
+                            if popAddr == -1 or self.population[popAddr, 0] == -1:
                                 continue
                             totalNum += 1
                             state_val =  self.population[popAddr, 0]
-                            if state_val == State.infect.value:
+                            if state_val == State.suscept.value:
+                                susCell.append(popAddr)
+                            elif state_val == State.infect.value:
                                 infCell.append(popAddr)
                                 infNum += 1
-                            elif state_val == State.suscept.value:
-                                susCell.append(popAddr)
                             else:
                                 recCell.append(popAddr)
 
-                        # stochastic process
+                        if not isAgent:
+                            if self.population[past_lattice[m-1,n,4],0] == State.infect.value:
+                                infNum += 1
+                            if self.population[past_lattice[m+1,n,4],0] == State.infect.value:
+                                infNum += 1
+                            if not(isTriangle and isNabla(m,n)): 
+                                if self.population[past_lattice[m,n-1,4],0] == State.infect.value:
+                                    infNum += 1
+                            if not(isTriangle and isDelta(m,n)):
+                                if self.population[past_lattice[m,n+1,4],0] == State.infect.value:
+                                    infNum += 1
+                            
+
                         #q = np.exp(beta * infNum / totalNum)
                         q = 1 - (1-self.getBeta(m,n))**infNum
 
@@ -284,7 +306,8 @@ class SIRmodel:
                         for recPopAddr in recCell:
                             if isSIRS:
                                 if self.population[recPopAddr, 1] > RecTime + SusTime:
-                                    self.population[recPopAddr] = [State.suscept.value, 0, -1]
+                                    self.population[recPopAddr, 0] = State.suscept.value
+                                    self.population[recPopAddr, 1] = 0
                                 else:
                                     self.population[recPopAddr, 1] += 1
 
@@ -292,17 +315,21 @@ class SIRmodel:
                         tri = np.tri(4, dtype=int).transpose()
                         direction = np.dot(past_lattice[m,n, :4], tri).astype(np.float64) / 10
                         for popAddr in cell:
-                            if popAddr == -1:
+                            if popAddr == -1 or self.population[popAddr, 0] == -1:
                                 continue
-                            direction_num = np.where(direction < np.random.random())[0].shape[0]
-                            if direction_num == 0 and (past_lattice[m-1, n, :4] == -1).all(): #is upper cell is in range?
-                                direction_num = 1
-                            if direction_num == 1 and (past_lattice[m+1, n, :4] == -1).all(): #is lower cell is in range?
-                                direction_num = 0
-                            if direction_num == 2 and (past_lattice[m, n-1, :4] == -1).all(): #is left cell is in range?
-                                direction_num = 3
-                            if direction_num == 3 and (past_lattice[m, n+1, :4] == -1).all(): #is right cell is in range?
-                                direction_num = 2
+                            if isAgent:
+                                direction_num = np.where(direction < np.random.random())[0].shape[0]
+                                if direction_num == 0 and (past_lattice[m-1, n, :4] == -1).all(): #is upper cell is in range?
+                                    direction_num = 1
+                                if direction_num == 1 and (past_lattice[m+1, n, :4] == -1).all(): #is lower cell is in range?
+                                    direction_num = 0
+                                if direction_num == 2 and (past_lattice[m, n-1, :4] == -1).all(): #is left cell is in range?
+                                    direction_num = 3
+                                if direction_num == 3 and (past_lattice[m, n+1, :4] == -1).all(): #is right cell is in range?
+                                    direction_num = 2
+                            else:
+                                direction_num = 4 #stay in the same cell    
+
                             if direction_num == 0: #go up
                                 position = np.where(self.lattice[m-1, n, 4:] == -1)[0]
                                 self.lattice[m-1, n, 4+position[0]] = popAddr
@@ -369,7 +396,7 @@ class SIRmodel:
                         infNum = 0
                         susNum = 0
                         for popAddr in cell:
-                            if popAddr == -1:
+                            if popAddr == -1 or self.population[popAddr, 0] == -1:
                                 continue
                             totalNum += 1
                             state_val = self.population[popAddr, 0]
@@ -477,7 +504,7 @@ class Draw_canvas:
                 infNum = 0
                 susNum = 0
                 for popAddr in cell:
-                    if popAddr == -1:
+                    if popAddr == -1 or self.lg.population[popAddr,0] == -1:
                         continue
                     totalNum += 1
                     state_val = self.lg.population[popAddr,0]
@@ -496,8 +523,14 @@ class Draw_canvas:
 
         #for st in num2State:
             #print(st,":\t", end="")
-        
-        print("Total\tInfect\tSuscept\tRecover")
+
+        buf = "Total\tSuscept\tInfect\tRecover\n"
+        print(buf, end="")
+
+        if not isDebug:
+            with open(OUTPUT, 'a') as f:
+                f.write(buf)
+                f.close()
         
     def canvas_update(self, x, y, color):
         try:
@@ -509,20 +542,21 @@ class Draw_canvas:
     def canvas_displayStatus(self, lat, population, past_count_dict):
         
         totalNum = np.where(population[:, 0] != -1)[0].shape[0]
-        totalInfNum = np.where(population[:, 0] == State.infect.value)[0].shape[0]
         totalSusNum = np.where(population[:, 0] == State.suscept.value)[0].shape[0]
+        totalInfNum = np.where(population[:, 0] == State.infect.value)[0].shape[0]
         totalRecNum = np.where(population[:, 0] == State.recover.value)[0].shape[0]
 
-        count_dict = [totalNum, totalInfNum, totalSusNum, totalRecNum]
+        count_dict = [totalNum, totalSusNum, totalInfNum, totalRecNum]
         past_count_dict.append(count_dict)
 
         buf = ""
         for nums in count_dict:
             bf = str(nums) + "\t"
             buf += bf
+        buf += "\n"
             
         if not isDebug:
-            print(buf)
+            print(buf, end="")
             with open(OUTPUT, 'a') as f:
                 f.write(buf)
                 f.close()
@@ -656,30 +690,38 @@ class TopWindow:
         # Grid(Radiobutton)
         self.tmp_grid = BooleanVar()
         Label(text = 'Grid:').pack()
-        triButton = Radiobutton(self.root, text="△", value=isTriangle, variable=self.tmp_grid, command=self.changeGrid)
-        squButton = Radiobutton(self.root, text="□", value=not isTriangle, variable=self.tmp_grid, command=self.changeGrid)
+        triButton = Radiobutton(self.root, text="△", value=True, variable=self.tmp_grid, command=self.changeGrid)
+        squButton = Radiobutton(self.root, text="□", value=False, variable=self.tmp_grid, command=self.changeGrid)
         if isTriangle:
             triButton.select()
         else:
             squButton.select()
         triButton.pack(anchor=W)
         squButton.pack(anchor=W)
-        # triButton.pack(sticky=W)
-        # squButton.pack(sticky=E)
-
 
         # Model(Radiobutton)
         self.tmp_model = BooleanVar()
         Label(text = 'Model:').pack()
-        SIRButton = Radiobutton(self.root, text="SIR", value= not isSIRS, variable=self.tmp_model, command=self.changeModel)
-        SIRSButton = Radiobutton(self.root, text="SIRS", value=isSIRS, variable=self.tmp_model, command=self.changeModel)
+        SIRButton = Radiobutton(self.root, text="SIR", value=False, variable=self.tmp_model, command=self.changeModel)
+        SIRSButton = Radiobutton(self.root, text="SIRS", value=True, variable=self.tmp_model, command=self.changeModel)
         if isSIRS:
             SIRSButton.select()
         else:
             SIRButton.select()
-
         SIRButton.pack(anchor = W)
         SIRSButton.pack(anchor = W)
+
+        # Agent(Radiobutton)
+        self.tmp_agent = BooleanVar()
+        Label(text = 'Population :').pack()
+        FixButton = Radiobutton(self.root, text="Fix", value=False, variable=self.tmp_agent, command=self.changeisAgent)
+        UnfixButton = Radiobutton(self.root, text="Unfix", value=True, variable=self.tmp_agent, command=self.changeisAgent)
+        if isAgent:
+            UnfixButton.select()
+        else:
+            FixButton.select()
+        FixButton.pack(anchor = W)
+        UnfixButton.pack(anchor = W)
 
         # Probability(Scale)
         self.tmp_prob = DoubleVar()
@@ -742,6 +784,10 @@ class TopWindow:
         global isSIRS
         isSIRS = self.tmp_model.get()
 
+    def changeisAgent(self):
+        global isAgent
+        isAgent = self.tmp_agent.get()
+
     def changeBeta(self, b):
         global beta
         beta = float(b)/100.0
@@ -800,7 +846,6 @@ class Main:
     def randSet(self):
         if 'self.lg.loop' in locals():
             self.pause()
-        #pdb.set_trace()
         self.lg = SIRmodel(L, i_ratio=default_i_ratio, pattern=None)
         self.DrawCanvas = Draw_canvas(self.lg, self.lg.L)
 
